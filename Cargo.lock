@@ -1520,6 +1520,7 @@ dependencies = [
  "ed25519-dalek",
  "h3o",
  "hex",
+ "rand 0.8.6",
  "render-core",
  "serde",
  "serde_json",

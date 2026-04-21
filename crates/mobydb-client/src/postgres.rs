@@ -16,8 +16,8 @@ use std::time::Duration;
 use tracing::instrument;
 
 use render_core::{
-    Attestation, CellState, CoreError, CoreResult, Epoch, EpochId, H3Cell, HexBytes32, HexBytes64,
-    MobyDbClient, Provenance, TenantId, Viewport,
+    Attestation, CellState, CoreError, CoreResult, Epoch, EpochId, H3Cell,
+    HexBytes32, HexBytes64, MobyDbClient, Provenance, TenantId, Viewport,
 };
 
 use crate::merkle;
@@ -27,28 +27,28 @@ use crate::merkle;
 // -----------------------------------------------------------------------------
 
 pub struct PostgresMobyDb {
-    pool: PgPool,
+    pool:               PgPool,
     tenancy_session_var: String,
 }
 
 pub struct Config {
-    pub database_url: String,
-    pub pool_max: u32,
-    pub pool_min: u32,
-    pub connect_timeout: Duration,
-    pub idle_timeout: Option<Duration>,
+    pub database_url:        String,
+    pub pool_max:            u32,
+    pub pool_min:            u32,
+    pub connect_timeout:     Duration,
+    pub idle_timeout:        Option<Duration>,
     pub tenancy_session_var: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            database_url: std::env::var("DATABASE_URL")
+            database_url:        std::env::var("DATABASE_URL")
                 .unwrap_or_else(|_| "postgres://localhost/mobydb_render".into()),
-            pool_max: 20,
-            pool_min: 2,
-            connect_timeout: Duration::from_secs(10),
-            idle_timeout: Some(Duration::from_secs(300)),
+            pool_max:            20,
+            pool_min:            2,
+            connect_timeout:     Duration::from_secs(10),
+            idle_timeout:        Some(Duration::from_secs(300)),
             tenancy_session_var: "app.current_tenant_id".into(),
         }
     }
@@ -59,11 +59,7 @@ impl PostgresMobyDb {
         // Defensive: validate session var name — only [a-z0-9_.] allowed.
         // It's interpolated into SET LOCAL statements; SQL injection here
         // would be catastrophic.
-        if !cfg
-            .tenancy_session_var
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.')
-        {
+        if !cfg.tenancy_session_var.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.') {
             anyhow::bail!(
                 "invalid tenancy session variable name: {}",
                 cfg.tenancy_session_var
@@ -84,9 +80,7 @@ impl PostgresMobyDb {
         })
     }
 
-    pub fn pool(&self) -> &PgPool {
-        &self.pool
-    }
+    pub fn pool(&self) -> &PgPool { &self.pool }
 
     pub async fn run_migrations(&self) -> anyhow::Result<()> {
         sqlx::migrate!("../../migrations").run(&self.pool).await?;
@@ -95,7 +89,10 @@ impl PostgresMobyDb {
 
     /// Open a transaction and set the RLS tenant session variable.
     /// This is the *only* way queries should hit the pool in this crate.
-    async fn tx_with_tenant(&self, tenant: &TenantId) -> CoreResult<Transaction<'_, Postgres>> {
+    async fn tx_with_tenant(
+        &self,
+        tenant: &TenantId,
+    ) -> CoreResult<Transaction<'_, Postgres>> {
         let mut tx = self.pool.begin().await.map_err(db_err)?;
         // Using SET LOCAL: scoped to this transaction only. Safer than
         // SET SESSION because pooled connections are reused across tenants.
@@ -136,16 +133,17 @@ fn decode_cell_state(row: &PgRow) -> CoreResult<CellState> {
     let payload: serde_json::Value = row.try_get("payload").map_err(db_err)?;
     let content_hash: Vec<u8> = row.try_get("content_hash").map_err(db_err)?;
     let signature: Vec<u8> = row.try_get("signature").map_err(db_err)?;
-    let written_at: chrono::DateTime<chrono::Utc> = row.try_get("written_at").map_err(db_err)?;
+    let written_at: chrono::DateTime<chrono::Utc> =
+        row.try_get("written_at").map_err(db_err)?;
 
     Ok(CellState {
-        tenant_id: TenantId::new(tenant_uuid),
-        h3_cell: H3Cell::from_i64(h3_i64),
-        epoch_id: EpochId::new(epoch_i64),
-        identity_pk: HexBytes32::from_slice(&identity_pk)?,
+        tenant_id:    TenantId::new(tenant_uuid),
+        h3_cell:      H3Cell::from_i64(h3_i64),
+        epoch_id:     EpochId::new(epoch_i64),
+        identity_pk:  HexBytes32::from_slice(&identity_pk)?,
         payload,
         content_hash: HexBytes32::from_slice(&content_hash)?,
-        signature: HexBytes64::from_slice(&signature)?,
+        signature:    HexBytes64::from_slice(&signature)?,
         written_at,
     })
 }
@@ -153,14 +151,15 @@ fn decode_cell_state(row: &PgRow) -> CoreResult<CellState> {
 fn decode_epoch(row: &PgRow) -> CoreResult<Epoch> {
     let tenant_uuid: uuid::Uuid = row.try_get("tenant_id").map_err(db_err)?;
     let epoch_i64: i64 = row.try_get("epoch_id").map_err(db_err)?;
-    let sealed_at: chrono::DateTime<chrono::Utc> = row.try_get("sealed_at").map_err(db_err)?;
+    let sealed_at: chrono::DateTime<chrono::Utc> =
+        row.try_get("sealed_at").map_err(db_err)?;
     let merkle_root: Vec<u8> = row.try_get("merkle_root").map_err(db_err)?;
     let parent_root: Option<Vec<u8>> = row.try_get("parent_root").map_err(db_err)?;
     let cell_count: i64 = row.try_get("cell_count").map_err(db_err)?;
 
     Ok(Epoch {
-        tenant_id: TenantId::new(tenant_uuid),
-        epoch_id: EpochId::new(epoch_i64),
+        tenant_id:   TenantId::new(tenant_uuid),
+        epoch_id:    EpochId::new(epoch_i64),
         sealed_at,
         merkle_root: HexBytes32::from_slice(&merkle_root)?,
         parent_root: parent_root
@@ -172,26 +171,27 @@ fn decode_epoch(row: &PgRow) -> CoreResult<Epoch> {
 
 fn decode_attestation(row: &PgRow) -> CoreResult<Attestation> {
     let attestation_id: uuid::Uuid = row.try_get("attestation_id").map_err(db_err)?;
-    let tenant_uuid: uuid::Uuid = row.try_get("tenant_id").map_err(db_err)?;
-    let h3_i64: i64 = row.try_get("h3_cell").map_err(db_err)?;
-    let epoch_i64: i64 = row.try_get("epoch_id").map_err(db_err)?;
-    let attester_pk: Vec<u8> = row.try_get("attester_pk").map_err(db_err)?;
-    let claim: serde_json::Value = row.try_get("claim").map_err(db_err)?;
-    let claim_hash: Vec<u8> = row.try_get("claim_hash").map_err(db_err)?;
-    let signature: Vec<u8> = row.try_get("signature").map_err(db_err)?;
-    let issued_at: chrono::DateTime<chrono::Utc> = row.try_get("issued_at").map_err(db_err)?;
-    let expires_at: Option<chrono::DateTime<chrono::Utc>> =
+    let tenant_uuid:    uuid::Uuid = row.try_get("tenant_id").map_err(db_err)?;
+    let h3_i64:         i64 = row.try_get("h3_cell").map_err(db_err)?;
+    let epoch_i64:      i64 = row.try_get("epoch_id").map_err(db_err)?;
+    let attester_pk:    Vec<u8> = row.try_get("attester_pk").map_err(db_err)?;
+    let claim:          serde_json::Value = row.try_get("claim").map_err(db_err)?;
+    let claim_hash:     Vec<u8> = row.try_get("claim_hash").map_err(db_err)?;
+    let signature:      Vec<u8> = row.try_get("signature").map_err(db_err)?;
+    let issued_at:      chrono::DateTime<chrono::Utc> =
+        row.try_get("issued_at").map_err(db_err)?;
+    let expires_at:     Option<chrono::DateTime<chrono::Utc>> =
         row.try_get("expires_at").map_err(db_err)?;
 
     Ok(Attestation {
         attestation_id,
-        tenant_id: TenantId::new(tenant_uuid),
-        h3_cell: H3Cell::from_i64(h3_i64),
-        epoch_id: EpochId::new(epoch_i64),
+        tenant_id:   TenantId::new(tenant_uuid),
+        h3_cell:     H3Cell::from_i64(h3_i64),
+        epoch_id:    EpochId::new(epoch_i64),
         attester_pk: HexBytes32::from_slice(&attester_pk)?,
         claim,
-        claim_hash: HexBytes32::from_slice(&claim_hash)?,
-        signature: HexBytes64::from_slice(&signature)?,
+        claim_hash:  HexBytes32::from_slice(&claim_hash)?,
+        signature:   HexBytes64::from_slice(&signature)?,
         issued_at,
         expires_at,
     })
@@ -210,10 +210,12 @@ impl MobyDbClient for PostgresMobyDb {
             r#"
             SELECT tenant_id, epoch_id, sealed_at, merkle_root, parent_root, cell_count
               FROM epochs
+             WHERE tenant_id = $1
              ORDER BY epoch_id DESC
              LIMIT 1
             "#,
         )
+        .bind(tenant.as_uuid())
         .fetch_optional(&mut *tx)
         .await
         .map_err(db_err)?;
@@ -224,7 +226,7 @@ impl MobyDbClient for PostgresMobyDb {
             Some(r) => decode_epoch(&r),
             None => Err(CoreError::EpochNotFound {
                 tenant: tenant.to_string(),
-                epoch: -1,
+                epoch:  -1,
             }),
         }
     }
@@ -236,9 +238,10 @@ impl MobyDbClient for PostgresMobyDb {
             r#"
             SELECT tenant_id, epoch_id, sealed_at, merkle_root, parent_root, cell_count
               FROM epochs
-             WHERE epoch_id = $1
+             WHERE tenant_id = $1 AND epoch_id = $2
             "#,
         )
+        .bind(tenant.as_uuid())
         .bind(epoch.as_i64())
         .fetch_optional(&mut *tx)
         .await
@@ -250,7 +253,7 @@ impl MobyDbClient for PostgresMobyDb {
             Some(r) => decode_epoch(&r),
             None => Err(CoreError::EpochNotFound {
                 tenant: tenant.to_string(),
-                epoch: epoch.as_i64(),
+                epoch:  epoch.as_i64(),
             }),
         }
     }
@@ -265,33 +268,39 @@ impl MobyDbClient for PostgresMobyDb {
         let mut tx = self.tx_with_tenant(tenant).await?;
 
         let row = match epoch {
-            Some(e) => sqlx::query(
-                r#"
+            Some(e) => {
+                sqlx::query(
+                    r#"
                     SELECT tenant_id, h3_cell, epoch_id, identity_pk, payload,
                            content_hash, signature, written_at
                       FROM cell_states
-                     WHERE h3_cell = $1 AND epoch_id = $2
+                     WHERE tenant_id = $1 AND h3_cell = $2 AND epoch_id = $3
                     "#,
-            )
-            .bind(h3.as_i64())
-            .bind(e.as_i64())
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(db_err)?,
-            None => sqlx::query(
-                r#"
+                )
+                .bind(tenant.as_uuid())
+                .bind(h3.as_i64())
+                .bind(e.as_i64())
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db_err)?
+            }
+            None => {
+                sqlx::query(
+                    r#"
                     SELECT tenant_id, h3_cell, epoch_id, identity_pk, payload,
                            content_hash, signature, written_at
                       FROM cell_states
-                     WHERE h3_cell = $1
+                     WHERE tenant_id = $1 AND h3_cell = $2
                      ORDER BY epoch_id DESC
                      LIMIT 1
                     "#,
-            )
-            .bind(h3.as_i64())
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(db_err)?,
+                )
+                .bind(tenant.as_uuid())
+                .bind(h3.as_i64())
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db_err)?
+            }
         };
 
         tx.commit().await.map_err(db_err)?;
@@ -317,7 +326,7 @@ impl MobyDbClient for PostgresMobyDb {
         if cells.len() > limit {
             return Err(CoreError::ViewportTooLarge {
                 requested: cells.len(),
-                max: limit,
+                max:       limit,
             });
         }
 
@@ -333,33 +342,39 @@ impl MobyDbClient for PostgresMobyDb {
         //   * epoch pinned: straightforward IN(...) at that epoch.
         //   * latest per cell: DISTINCT ON (h3_cell) with ORDER BY h3, epoch DESC.
         let rows = match epoch {
-            Some(e) => sqlx::query(
-                r#"
+            Some(e) => {
+                sqlx::query(
+                    r#"
                     SELECT tenant_id, h3_cell, epoch_id, identity_pk, payload,
                            content_hash, signature, written_at
                       FROM cell_states
-                     WHERE h3_cell = ANY($1) AND epoch_id = $2
+                     WHERE tenant_id = $1 AND h3_cell = ANY($2) AND epoch_id = $3
                     "#,
-            )
-            .bind(&cell_ids_i64[..])
-            .bind(e.as_i64())
-            .fetch_all(&mut *tx)
-            .await
-            .map_err(db_err)?,
-            None => sqlx::query(
-                r#"
+                )
+                .bind(tenant.as_uuid())
+                .bind(&cell_ids_i64[..])
+                .bind(e.as_i64())
+                .fetch_all(&mut *tx)
+                .await
+                .map_err(db_err)?
+            }
+            None => {
+                sqlx::query(
+                    r#"
                     SELECT DISTINCT ON (h3_cell)
                            tenant_id, h3_cell, epoch_id, identity_pk, payload,
                            content_hash, signature, written_at
                       FROM cell_states
-                     WHERE h3_cell = ANY($1)
+                     WHERE tenant_id = $1 AND h3_cell = ANY($2)
                      ORDER BY h3_cell, epoch_id DESC
                     "#,
-            )
-            .bind(&cell_ids_i64[..])
-            .fetch_all(&mut *tx)
-            .await
-            .map_err(db_err)?,
+                )
+                .bind(tenant.as_uuid())
+                .bind(&cell_ids_i64[..])
+                .fetch_all(&mut *tx)
+                .await
+                .map_err(db_err)?
+            }
         };
 
         tx.commit().await.map_err(db_err)?;
@@ -382,9 +397,10 @@ impl MobyDbClient for PostgresMobyDb {
             SELECT tenant_id, h3_cell, epoch_id, identity_pk, payload,
                    content_hash, signature, written_at
               FROM cell_states
-             WHERE h3_cell = $1 AND epoch_id = $2
+             WHERE tenant_id = $1 AND h3_cell = $2 AND epoch_id = $3
             "#,
         )
+        .bind(tenant.as_uuid())
         .bind(h3.as_i64())
         .bind(epoch.as_i64())
         .fetch_optional(&mut *tx)
@@ -392,8 +408,8 @@ impl MobyDbClient for PostgresMobyDb {
         .map_err(db_err)?
         .ok_or_else(|| CoreError::CellNotFound {
             tenant: tenant.to_string(),
-            h3: h3.as_u64(),
-            epoch: Some(epoch.as_i64()),
+            h3:     h3.as_u64(),
+            epoch:  Some(epoch.as_i64()),
         })?;
 
         let cell_state = decode_cell_state(&cell_row)?;
@@ -404,10 +420,11 @@ impl MobyDbClient for PostgresMobyDb {
             SELECT attestation_id, tenant_id, h3_cell, epoch_id,
                    attester_pk, claim, claim_hash, signature, issued_at, expires_at
               FROM attestations
-             WHERE h3_cell = $1 AND epoch_id = $2
+             WHERE tenant_id = $1 AND h3_cell = $2 AND epoch_id = $3
              ORDER BY issued_at ASC
             "#,
         )
+        .bind(tenant.as_uuid())
         .bind(h3.as_i64())
         .bind(epoch.as_i64())
         .fetch_all(&mut *tx)
@@ -422,9 +439,10 @@ impl MobyDbClient for PostgresMobyDb {
             r#"
             SELECT tenant_id, epoch_id, sealed_at, merkle_root, parent_root, cell_count
               FROM epochs
-             WHERE epoch_id = $1
+             WHERE tenant_id = $1 AND epoch_id = $2
             "#,
         )
+        .bind(tenant.as_uuid())
         .bind(epoch.as_i64())
         .fetch_one(&mut *tx)
         .await
@@ -437,10 +455,11 @@ impl MobyDbClient for PostgresMobyDb {
             r#"
             SELECT h3_cell, content_hash
               FROM cell_states
-             WHERE epoch_id = $1
+             WHERE tenant_id = $1 AND epoch_id = $2
              ORDER BY h3_cell ASC
             "#,
         )
+        .bind(tenant.as_uuid())
         .bind(epoch.as_i64())
         .fetch_all(&mut *tx)
         .await
@@ -458,13 +477,13 @@ impl MobyDbClient for PostgresMobyDb {
         let merkle_proof = merkle::proof_for(&all_hashes, h3.as_i64())?;
 
         Ok(Provenance {
-            tenant_id: *tenant,
-            h3_cell: h3,
-            epoch_id: epoch,
+            tenant_id:    *tenant,
+            h3_cell:      h3,
+            epoch_id:     epoch,
             cell_state,
             attestations: atts,
             merkle_proof,
-            epoch: epoch_meta,
+            epoch:        epoch_meta,
         })
     }
 
@@ -481,10 +500,11 @@ impl MobyDbClient for PostgresMobyDb {
             SELECT attestation_id, tenant_id, h3_cell, epoch_id,
                    attester_pk, claim, claim_hash, signature, issued_at, expires_at
               FROM attestations
-             WHERE h3_cell = $1 AND epoch_id = $2
+             WHERE tenant_id = $1 AND h3_cell = $2 AND epoch_id = $3
              ORDER BY issued_at ASC
             "#,
         )
+        .bind(tenant.as_uuid())
         .bind(h3.as_i64())
         .bind(epoch.as_i64())
         .fetch_all(&mut *tx)
@@ -522,10 +542,7 @@ fn viewport_to_cells(v: &Viewport) -> CoreResult<Vec<H3Cell>> {
     use h3o::{CellIndex, LatLng as H3LatLng, Resolution};
 
     match v {
-        Viewport::ParentCell {
-            parent,
-            target_resolution,
-        } => {
+        Viewport::ParentCell { parent, target_resolution } => {
             let res = Resolution::try_from(*target_resolution)
                 .map_err(|_| CoreError::InvalidH3Resolution(*target_resolution))?;
             let parent_cell = CellIndex::try_from(parent.as_u64())
@@ -542,11 +559,7 @@ fn viewport_to_cells(v: &Viewport) -> CoreResult<Vec<H3Cell>> {
                 .map(|c| H3Cell::new(u64::from(c)))
                 .collect())
         }
-        Viewport::BoundingBox {
-            south_west,
-            north_east,
-            resolution,
-        } => {
+        Viewport::BoundingBox { south_west, north_east, resolution } => {
             let res = Resolution::try_from(*resolution)
                 .map_err(|_| CoreError::InvalidH3Resolution(*resolution))?;
 
@@ -563,8 +576,7 @@ fn viewport_to_cells(v: &Viewport) -> CoreResult<Vec<H3Cell>> {
             // Bbox diagonal in km (rough — treats lat/lng as planar)
             let dlat_km = (north_east.lat - south_west.lat).abs() * 111.0;
             let dlng_km = (north_east.lng - south_west.lng).abs()
-                * 111.0
-                * (center_lat.to_radians().cos().max(0.01));
+                * 111.0 * (center_lat.to_radians().cos().max(0.01));
             let diag_km = (dlat_km * dlat_km + dlng_km * dlng_km).sqrt();
 
             // k rings to cover the diagonal. +1 margin for rounding.
@@ -585,21 +597,9 @@ fn viewport_to_cells(v: &Viewport) -> CoreResult<Vec<H3Cell>> {
 /// Source: H3 documentation. Used only for grid_disk sizing.
 fn avg_edge_km(res: u8) -> f64 {
     const EDGES_KM: [f64; 16] = [
-        1107.712591,
-        418.676005,
-        158.244656,
-        59.810858,
-        22.606379,
-        8.544408,
-        3.229483,
-        1.220630,
-        0.461355,
-        0.174376,
-        0.065908,
-        0.024911,
-        0.009415,
-        0.003560,
-        0.001349,
+        1107.712591, 418.676005, 158.244656, 59.810858, 22.606379,
+        8.544408,    3.229483,   1.220630,   0.461355,  0.174376,
+        0.065908,    0.024911,   0.009415,   0.003560,  0.001349,
         0.000509,
     ];
     EDGES_KM.get(res as usize).copied().unwrap_or(0.0005)
