@@ -48,8 +48,8 @@ const CONCURRENCY = args.concurrency ?? 1;
 // ~5-6 km each way and covers the whole res-9 grid_disk cleanly, while
 // staying small enough that we don't pull in hundreds of unrelated cells.
 const ROME_BBOX = {
-    south_west: { lat: 41.86, lng: 12.45 },
-    north_east: { lat: 41.95, lng: 12.55 },
+    south_west: { lat: 41.895, lng: 12.488 },
+    north_east: { lat: 41.911, lng: 12.505 },
 };
 const TARGET_RES = 9;
 

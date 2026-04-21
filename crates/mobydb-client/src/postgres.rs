@@ -468,6 +468,17 @@ impl MobyDbClient for PostgresMobyDb {
 
         let merkle_proof = merkle::proof_for(&all_hashes, h3.as_i64())?;
 
+        // all_hashes is already sorted (ORDER BY h3_cell ASC); this is the
+        // leaf's position the offline verifier needs.
+        let leaf_index = all_hashes
+            .iter()
+            .position(|(cell_h3, _)| *cell_h3 == h3.as_i64())
+            .ok_or_else(|| CoreError::CellNotFound {
+                tenant: tenant.to_string(),
+                h3: h3.as_u64(),
+                epoch: Some(epoch.as_i64()),
+            })? as u64;
+
         Ok(Provenance {
             tenant_id: *tenant,
             h3_cell: h3,
@@ -475,6 +486,7 @@ impl MobyDbClient for PostgresMobyDb {
             cell_state,
             attestations: atts,
             merkle_proof,
+            leaf_index,
             epoch: epoch_meta,
         })
     }

@@ -82,15 +82,18 @@ async fn merkle_proof_round_trip_against_real_db() {
         "stored epoch root must match what the fixture computed",
     );
 
-    // Find the leaf index — the fixture sorted cells ASC by h3_cell to build
-    // the tree, so we recreate that order and find our cell's rank.
-    let leaf_idx = fetch_leaf_index(&admin_pool, &tenant_uuid, test_cell_h3).await;
+    // Cross-check: server's leaf_index matches an independent DB-side lookup.
+    let leaf_idx_db = fetch_leaf_index(&admin_pool, &tenant_uuid, test_cell_h3).await;
+    assert_eq!(
+        provenance.leaf_index as usize, leaf_idx_db,
+        "server's leaf_index must match independent lookup",
+    );
 
     // Reconstruct the root from (content_hash, proof, leaf_idx, leaf_count)
     let content_hash = *provenance.cell_state.content_hash.as_bytes();
     let verified = merkle::verify_proof(
         &content_hash,
-        leaf_idx,
+        provenance.leaf_index as usize,
         cell_count,
         &provenance.merkle_proof,
         &expected_root,
@@ -99,10 +102,11 @@ async fn merkle_proof_round_trip_against_real_db() {
     assert!(
         verified,
         "merkle proof failed to reconstruct the stored root.\n\
-         leaf_idx={leaf_idx}, leaf_count={cell_count}\n\
+         leaf_idx={}, leaf_count={cell_count}\n\
          content_hash={}\n\
          expected_root={}\n\
          proof_len={}",
+        provenance.leaf_index,
         hex::encode(content_hash),
         hex::encode(expected_root),
         provenance.merkle_proof.len(),

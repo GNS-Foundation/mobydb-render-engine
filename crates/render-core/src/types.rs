@@ -317,6 +317,10 @@ pub struct Provenance {
     /// Merkle proof: the sibling hashes needed to reconstruct
     /// `epoch.merkle_root` from this cell's `content_hash`.
     pub merkle_proof: Vec<HexBytes32>,
+    /// This cell's position in the sorted leaf list at this epoch.
+    /// Required by offline verifiers: the proof path is only
+    /// interpretable with the leaf's index.
+    pub leaf_index: u64,
     pub epoch: Epoch,
 }
 
