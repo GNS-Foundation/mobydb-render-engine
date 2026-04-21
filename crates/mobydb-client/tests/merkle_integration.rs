@@ -120,15 +120,13 @@ async fn setup_test_tenant(pool: &PgPool, tenant: &Uuid) {
     // Best-effort cleanup first (handles re-runs)
     teardown_test_tenant(pool, tenant).await;
 
-    sqlx::query(
-        "INSERT INTO tenants (tenant_id, slug, display_name) VALUES ($1, $2, $3)",
-    )
-    .bind(tenant)
-    .bind(format!("merkle-test-{}", tenant.simple()))
-    .bind("Merkle Integration Test")
-    .execute(pool)
-    .await
-    .expect("insert test tenant");
+    sqlx::query("INSERT INTO tenants (tenant_id, slug, display_name) VALUES ($1, $2, $3)")
+        .bind(tenant)
+        .bind(format!("merkle-test-{}", tenant.simple()))
+        .bind("Merkle Integration Test")
+        .execute(pool)
+        .await
+        .expect("insert test tenant");
 }
 
 async fn teardown_test_tenant(pool: &PgPool, tenant: &Uuid) {
@@ -141,11 +139,7 @@ async fn teardown_test_tenant(pool: &PgPool, tenant: &Uuid) {
 
 /// Write `cell_count` signed cell states into epoch 0, compute the Merkle root,
 /// insert the epoch row, return (root, first_cell_h3).
-async fn write_test_epoch(
-    pool: &PgPool,
-    tenant: &Uuid,
-    cell_count: usize,
-) -> ([u8; 32], i64) {
+async fn write_test_epoch(pool: &PgPool, tenant: &Uuid, cell_count: usize) -> ([u8; 32], i64) {
     // Deterministic — reproducible test
     let mut rng = StdRng::seed_from_u64(0xDEADBEEF);
     let mut key_bytes = [0u8; 32];
