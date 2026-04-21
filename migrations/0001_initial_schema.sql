@@ -160,24 +160,21 @@ CREATE POLICY tenant_isolation_attestations ON attestations
     USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
 
 -- -----------------------------------------------------------------------------
--- Helper: seed a CI tenant (only for ENV=test / ENV=development)
+-- Helper: seed the CI tenant row
 -- -----------------------------------------------------------------------------
--- This INSERT is idempotent and safe to run in all environments; the CI
--- workflow depends on tenant 00000000-...0001 existing.
+-- The tenant row is schema-concern (its existence is a FK target for test
+-- fixtures) and is safe to create idempotently in the migration.
+--
+-- Epochs are application-concern and are NOT seeded here — the seed-data
+-- binary or the render service creates epoch rows when it has a real
+-- Merkle root to insert. Seeding a placeholder epoch with a zero root here
+-- would break `get_provenance` verification for epoch 0.
 DO $$
 BEGIN
-    -- Temporarily bypass RLS to insert the seed tenant
+    -- Temporarily set the RLS session var so the INSERT passes policy checks
+    -- when this migration is applied by a non-superuser role.
     PERFORM set_config('app.current_tenant_id', '00000000-0000-0000-0000-000000000001', true);
     INSERT INTO tenants (tenant_id, slug, display_name)
     VALUES ('00000000-0000-0000-0000-000000000001', 'ci-tenant', 'CI Tenant')
     ON CONFLICT (tenant_id) DO NOTHING;
-
-    INSERT INTO epochs (tenant_id, epoch_id, merkle_root, parent_root)
-    VALUES (
-        '00000000-0000-0000-0000-000000000001',
-        0,
-        decode('0000000000000000000000000000000000000000000000000000000000000000', 'hex'),
-        NULL
-    )
-    ON CONFLICT (tenant_id, epoch_id) DO NOTHING;
 END $$;
