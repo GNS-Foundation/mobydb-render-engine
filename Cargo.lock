@@ -2191,6 +2191,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "seed-data"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "chrono",
+ "dotenvy",
+ "ed25519-dalek",
+ "h3o",
+ "hex",
+ "mobydb-client",
+ "rand 0.8.6",
+ "render-core",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"

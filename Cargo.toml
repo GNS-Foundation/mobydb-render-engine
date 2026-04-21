@@ -4,12 +4,13 @@ members = [
     "crates/render-core",
     "crates/mobydb-client",
     "crates/mcp-server",
+    "crates/seed-data",
 ]
 
 [workspace.package]
 version      = "0.1.0"
 edition      = "2021"
-rust-version = "1.88"
+rust-version = "1.85"
 license      = "Proprietary"
 authors      = ["ULISSY s.r.l. <hello@ulissy.app>"]
 repository   = "https://github.com/GNS-Foundation/mobydb-render-engine"
