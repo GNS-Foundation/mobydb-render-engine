@@ -17,6 +17,7 @@ mod config;
 mod error;
 mod http;
 mod mcp;
+mod rate_limit;
 mod tenancy;
 mod tools;
 

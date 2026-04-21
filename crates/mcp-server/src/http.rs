@@ -62,6 +62,9 @@ pub struct AppState {
     pub auth: AuthState,
     pub tools: Arc<ToolRegistry>,
     pub metrics: Option<Arc<PrometheusHandle>>,
+    /// Shared bucket for the public demo API key. None if no demo key
+    /// is configured (production without demo surface).
+    pub demo_limiter: Option<Arc<crate::rate_limit::DemoRateLimiter>>,
 }
 
 // -----------------------------------------------------------------------------
@@ -79,18 +82,42 @@ pub async fn serve(cfg: Config, db: Arc<dyn MobyDbClient>) -> anyhow::Result<()>
         None
     };
 
+    let demo_limiter = cfg.auth_demo_api_key.as_ref().map(|_| {
+        Arc::new(crate::rate_limit::DemoRateLimiter::new(
+            cfg.auth_demo_rate_limit_per_min,
+        ))
+    });
+    if demo_limiter.is_some() {
+        info!(
+            limit_per_min = cfg.auth_demo_rate_limit_per_min,
+            "demo api key configured, rate limiting active"
+        );
+    }
+
     let state = AppState {
         cfg: cfg.clone(),
         db: db.clone(),
         auth: AuthState::new(cfg.clone()),
         tools: Arc::new(ToolRegistry::build(db)),
         metrics: metrics_handle,
+        demo_limiter,
     };
 
+    // CORS: allowlist explicit methods and headers so custom auth headers
+    // work reliably across browsers. Origin stays Any because the demo
+    // surface is public (rate-limited). `max_age` caches the preflight
+    // response for an hour to avoid OPTIONS overhead on every MCP call.
+    use axum::http::{header, HeaderName, Method};
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([
+            header::CONTENT_TYPE,
+            header::AUTHORIZATION,
+            HeaderName::from_static("x-mobydb-api-key"),
+            HeaderName::from_static("x-request-id"),
+        ])
+        .max_age(std::time::Duration::from_secs(3600));
 
     let app: Router = Router::new()
         .route("/mcp", post(mcp_handler))
@@ -174,6 +201,8 @@ async fn health_handler(State(state): State<AppState>) -> impl IntoResponse {
         "env":          state.cfg.env,
         "db_healthy":   db_healthy,
         "railway_env":  state.cfg.railway_environment,
+        "demo_enabled": state.cfg.auth_demo_api_key.is_some(),
+        "demo_rate_limit_per_min": state.cfg.auth_demo_rate_limit_per_min,
     }));
     (http_code, body)
 }
@@ -204,6 +233,49 @@ async fn mcp_handler(
         Ok(a) => a,
         Err(e) => return e.into_response(),
     };
+
+    // If the caller used the demo key, consume one request from the bucket.
+    // Main key traffic bypasses this — trusted callers, full rate.
+    if auth_ctx.scheme == crate::auth::AuthScheme::DemoApiKey {
+        if let Some(limiter) = state.demo_limiter.as_ref() {
+            use crate::rate_limit::RateLimitDecision;
+            match limiter.check() {
+                RateLimitDecision::Ok {
+                    count_in_window,
+                    limit,
+                } => {
+                    tracing::debug!(count = count_in_window, limit, "demo key within rate limit");
+                }
+                RateLimitDecision::Exceeded {
+                    retry_after_sec,
+                    limit,
+                } => {
+                    warn!(limit, retry_after_sec, "demo key rate limit exceeded");
+                    return (
+                        StatusCode::TOO_MANY_REQUESTS,
+                        [
+                            ("retry-after", retry_after_sec.to_string()),
+                            ("x-ratelimit-limit", limit.to_string()),
+                            ("x-ratelimit-remaining", "0".to_string()),
+                        ],
+                        Json(json!({
+                            "jsonrpc": "2.0",
+                            "error": {
+                                "code":    -32029,
+                                "message": format!(
+                                    "demo rate limit of {} req/min exceeded — retry in {}s",
+                                    limit, retry_after_sec
+                                ),
+                            },
+                            "id": null
+                        })),
+                    )
+                        .into_response();
+                }
+            }
+        }
+    }
+
     let tenant = tenancy::resolve(&auth_ctx);
 
     // JSON-RPC supports single or batch. Handle both.

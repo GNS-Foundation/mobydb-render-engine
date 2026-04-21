@@ -31,6 +31,14 @@ pub struct Config {
     // Auth
     pub auth_api_key: Option<String>,
     pub auth_api_key_header: String,
+    /// Optional second API key for a public rate-limited demo surface.
+    /// Requests using this key are still tenant-scoped to TENANT_ID_DEFAULT,
+    /// but are subject to a per-minute rate limit to prevent abuse of the
+    /// public URL (e.g. demo.mobydb.com).
+    pub auth_demo_api_key: Option<String>,
+    /// Rate limit in requests per minute for the demo key. Applies globally
+    /// (single shared bucket) since there is a single demo key.
+    pub auth_demo_rate_limit_per_min: u32,
     pub oauth_enabled: bool,
     pub oauth_issuer: String,
     pub oauth_audience: String,
@@ -90,6 +98,10 @@ impl Config {
 
             auth_api_key: env::var("AUTH_API_KEY").ok().filter(|s| !s.is_empty()),
             auth_api_key_header: env_or("AUTH_API_KEY_HEADER", "x-mobydb-api-key"),
+            auth_demo_api_key: env::var("AUTH_DEMO_API_KEY").ok().filter(|s| !s.is_empty()),
+            auth_demo_rate_limit_per_min: env_or("AUTH_DEMO_RATE_LIMIT_PER_MIN", "100")
+                .parse()
+                .unwrap_or(100),
             oauth_enabled: bool_env("OAUTH_ENABLED", false),
             oauth_issuer: env_or("OAUTH_ISSUER", ""),
             oauth_audience: env_or("OAUTH_AUDIENCE", ""),

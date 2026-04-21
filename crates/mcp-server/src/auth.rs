@@ -24,16 +24,18 @@ use crate::config::Config;
 use render_core::TenantId;
 
 #[derive(Clone)]
-#[allow(dead_code)] // scheme + subject consumed in Week 4 (authz) and Week 5 (log enrichment)
+#[allow(dead_code)] // scheme + subject are consumed in Week 4 (authz) and Week 5 (log enrichment)
 pub struct AuthContext {
     pub tenant: TenantId,
     pub scheme: AuthScheme,
     pub subject: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AuthScheme {
     ApiKey,
+    /// Public demo key — same auth surface but rate-limited in the HTTP layer.
+    DemoApiKey,
     OAuth2,
     /// Development fallback: no auth configured at all; uses TENANT_ID_DEFAULT.
     /// Hard-error in production via cfg.env guard.
@@ -94,17 +96,32 @@ pub async fn authenticate(
         }
     }
 
-    // ---- 2. API key ----
-    if let Some(expected) = cfg.auth_api_key.as_ref() {
+    // ---- 2. API key (main or demo) ----
+    // Both keys are accepted on the same header. The scheme tag lets the
+    // HTTP layer apply rate limiting to demo-key traffic.
+    let main_key = cfg.auth_api_key.as_ref();
+    let demo_key = cfg.auth_demo_api_key.as_ref();
+    if main_key.is_some() || demo_key.is_some() {
         match headers.get(cfg.auth_api_key_header.as_str()) {
             Some(v) => {
-                let v = v.to_str().unwrap_or("");
-                if constant_time_eq(v.as_bytes(), expected.as_bytes()) {
-                    return Ok(AuthContext {
-                        tenant: TenantId::new(cfg.tenant_id_default),
-                        scheme: AuthScheme::ApiKey,
-                        subject: None,
-                    });
+                let v = v.to_str().unwrap_or("").as_bytes();
+                if let Some(expected) = main_key {
+                    if constant_time_eq(v, expected.as_bytes()) {
+                        return Ok(AuthContext {
+                            tenant: TenantId::new(cfg.tenant_id_default),
+                            scheme: AuthScheme::ApiKey,
+                            subject: None,
+                        });
+                    }
+                }
+                if let Some(expected) = demo_key {
+                    if constant_time_eq(v, expected.as_bytes()) {
+                        return Ok(AuthContext {
+                            tenant: TenantId::new(cfg.tenant_id_default),
+                            scheme: AuthScheme::DemoApiKey,
+                            subject: None,
+                        });
+                    }
                 }
                 return Err(AuthError(StatusCode::UNAUTHORIZED, "invalid api key"));
             }
