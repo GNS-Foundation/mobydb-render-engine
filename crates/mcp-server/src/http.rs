@@ -368,7 +368,14 @@ async fn handle_tools_call(
     // the tool itself go in isError; JSON-RPC-level errors (bad params,
     // unknown tool) go on the envelope error.
     match result {
-        Ok(v) => Ok(serde_json::to_value(ToolsCallResult::text_json(&v)).unwrap()),
+        Ok(v) => {
+            let meta = crate::mcp::ToolsCallMeta {
+                render_ms: elapsed_ms,
+                tool: call.name.clone(),
+            };
+            let envelope = ToolsCallResult::text_json(&v).with_meta(meta);
+            Ok(serde_json::to_value(envelope).unwrap())
+        }
         Err(e)
             if e.code == JsonRpcError::METHOD_NOT_FOUND
                 || e.code == JsonRpcError::INVALID_PARAMS =>

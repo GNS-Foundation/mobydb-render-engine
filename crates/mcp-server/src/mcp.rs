@@ -157,6 +157,22 @@ pub struct ToolsCallResult {
     pub content: Vec<ContentBlock>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "isError")]
     pub is_error: Option<bool>,
+    /// Server-side metadata. Not part of the MCP spec's required fields, but
+    /// the spec allows extension properties on tool results. Leading-underscore
+    /// namespace marks it as server-specific so clients can ignore it safely.
+    #[serde(skip_serializing_if = "Option::is_none", rename = "_meta")]
+    pub meta: Option<ToolsCallMeta>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ToolsCallMeta {
+    /// Wall-clock time the server spent handling this tool call, in milliseconds.
+    /// Measured from just-after-auth to just-before-response-serialization —
+    /// covers tool dispatch, DB round-trip, and result assembly. Excludes HTTP
+    /// framing and network transit.
+    pub render_ms: f64,
+    /// Tool name (redundant with params.name but convenient for log grepping).
+    pub tool: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -172,12 +188,18 @@ impl ToolsCallResult {
                 text: serde_json::to_string(v).unwrap_or_else(|_| "{}".into()),
             }],
             is_error: None,
+            meta: None,
         }
     }
     pub fn error(msg: impl Into<String>) -> Self {
         Self {
             content: vec![ContentBlock::Text { text: msg.into() }],
             is_error: Some(true),
+            meta: None,
         }
+    }
+    pub fn with_meta(mut self, meta: ToolsCallMeta) -> Self {
+        self.meta = Some(meta);
+        self
     }
 }
