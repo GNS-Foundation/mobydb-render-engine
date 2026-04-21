@@ -31,5 +31,6 @@ dotenvy          = { workspace = true }
 hex              = { workspace = true }
 blake3           = { workspace = true }
 ed25519-dalek    = { workspace = true, features = ["rand_core"] }
-h3o              = { workspace = true }
+h3o              = { workspace = true, features = ["geo"] }
+geo              = "0.28"
 rand             = "0.8"

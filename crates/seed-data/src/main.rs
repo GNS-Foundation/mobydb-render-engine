@@ -1,32 +1,35 @@
-//! seed-data — load synthetic cell states + epochs into MobyDB for demos.
+//! seed-data — load synthetic grid telemetry into MobyDB for demo use.
 //!
-//! Generates ~90 cell states across 3 epochs for the seed tenant
-//! (00000000-0000-0000-0000-000000000001), geographically clustered around
-//! three Italian cities (Rome, Milan, Naples) at H3 resolution 9.
+//! Writes ~850 H3 cells covering Italy across 10 epochs, signed by 11
+//! per-city substation identities (10 cities + national overview), with
+//! plausibly-shaped grid load values (diurnal cycle + small per-cell
+//! noise + per-city baseline).
 //!
-//! Each cell state is Ed25519-signed by one of three deterministically-derived
-//! "substation" identities — enough to demonstrate multi-writer provenance
-//! without being a real grid topology.
+//! Coverage:
+//!   - 10 Italian cities: Milano, Torino, Venezia, Genova, Bologna,
+//!     Firenze, Roma, Napoli, Bari, Palermo
+//!   - H3 res 9 (~0.1 km²) around each city — ~800 detail cells total
+//!   - H3 res 6 (~36 km²) national overview polyfill of Italy bbox
+//!   - 10 epochs spanning 5 simulated days (morning + evening each day)
 //!
-//! Idempotent: re-running skips rows that already exist (ON CONFLICT DO NOTHING).
+//! Idempotent: re-running against a tenant that already has data at these
+//! (tenant, h3, epoch) keys will ON CONFLICT DO NOTHING per row. For a
+//! clean reseed, run scripts/ops/reseed_italy.sh first.
 //!
-//! Run with:
-//!     DATABASE_URL=<postgres url> cargo run --bin seed-data
-//!
-//! The DATABASE_URL here should be the POSTGRES-role URL (not render_app),
-//! because seeding involves INSERTs without the RLS session var being set
-//! by the app layer — we explicitly SET LOCAL for each tenant write.
+//! Run:
+//!   DATABASE_URL=<postgres-role URL> cargo run --bin seed-data
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signer, SigningKey};
-use h3o::{LatLng, Resolution};
+use h3o::{CellIndex, LatLng, Resolution};
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use serde_json::json;
+use serde_json::{json, Value};
 use sqlx::postgres::PgPoolOptions;
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, QueryBuilder};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -35,24 +38,35 @@ use uuid::Uuid;
 // -----------------------------------------------------------------------------
 
 const TENANT_ID: &str = "00000000-0000-0000-0000-000000000001";
-const H3_RESOLUTION: u8 = 9;
 const DETERMINISTIC_SEED: u64 = 20260421;
-const EPOCH_COUNT: i64 = 3;
 
-/// Three Italian cities — (name, lat, lng, cells_per_epoch)
-const CITIES: &[(&str, f64, f64, u32)] = &[
-    ("roma", 41.9028, 12.4964, 15),
-    ("milano", 45.4642, 9.1900, 10),
-    ("napoli", 40.8518, 14.2681, 5),
+/// 10 Italian cities with grid relevance. Fields:
+/// `(slug, lat, lng, detail_cell_count, base_load_pu)`
+const CITIES: &[(&str, f64, f64, u32, f64)] = &[
+    ("milano", 45.4642, 9.1900, 120, 1.15),
+    ("torino", 45.0703, 7.6869, 90, 1.00),
+    ("venezia", 45.4408, 12.3155, 60, 0.75),
+    ("genova", 44.4056, 8.9463, 70, 0.85),
+    ("bologna", 44.4949, 11.3426, 80, 0.90),
+    ("firenze", 43.7696, 11.2558, 70, 0.85),
+    ("roma", 41.9028, 12.4964, 110, 1.10),
+    ("napoli", 40.8518, 14.2681, 90, 1.00),
+    ("bari", 41.1171, 16.8719, 55, 0.80),
+    ("palermo", 38.1157, 13.3615, 65, 0.90),
 ];
 
-/// Three substation identities — seeds are deterministic so signatures are
-/// reproducible across runs (useful for debugging & fixtures).
-const SUBSTATIONS: &[(&str, u64)] = &[
-    ("substation_a_grid_north", 0xA000_0000_0000_0001),
-    ("substation_b_grid_south", 0xB000_0000_0000_0002),
-    ("substation_c_distribution_ring", 0xC000_0000_0000_0003),
-];
+const DETAIL_RESOLUTION: u8 = 9;
+const OVERVIEW_RESOLUTION: u8 = 6;
+
+/// Italy bounding box for the res-6 overview layer.
+/// (lat_min, lat_max, lng_min, lng_max)
+const ITALY_BBOX: (f64, f64, f64, f64) = (35.5, 47.1, 6.6, 18.6);
+
+const EPOCH_COUNT: i64 = 10;
+
+/// Batch size for INSERT — 100 rows × 7 bind params = 700 params per
+/// statement, well under Postgres' ~32k limit.
+const BATCH_SIZE: usize = 100;
 
 // -----------------------------------------------------------------------------
 // main
@@ -70,7 +84,7 @@ async fn main() -> Result<()> {
         .init();
 
     let database_url = std::env::var("DATABASE_URL")
-        .context("DATABASE_URL must be set (use the postgres-role URL, not render_app)")?;
+        .context("DATABASE_URL must be set (postgres-role URL, not render_app)")?;
 
     let tenant: Uuid = TENANT_ID.parse()?;
 
@@ -82,80 +96,64 @@ async fn main() -> Result<()> {
         .await
         .context("connect to database")?;
 
-    info!("verifying seed tenant exists");
     verify_tenant_exists(&pool, &tenant).await?;
 
-    // Generate substation keypairs deterministically
-    let substations: Vec<(String, SigningKey)> = SUBSTATIONS
-        .iter()
-        .map(|(name, seed)| {
-            let mut rng = StdRng::seed_from_u64(*seed);
-            let mut key_bytes = [0u8; 32];
-            rng.fill(&mut key_bytes);
-            let signing_key = SigningKey::from_bytes(&key_bytes);
-            (name.to_string(), signing_key)
-        })
-        .collect();
-
-    info!(
-        substation_count = substations.len(),
-        "derived substation identities"
-    );
-    for (name, key) in &substations {
-        let pk = key.verifying_key();
+    let substations = derive_substations();
+    info!(count = substations.len(), "substation identities ready");
+    for (owner, key) in &substations {
         info!(
-            name = %name,
-            pk = %hex::encode(pk.to_bytes()),
-            "substation ready"
+            owner = %owner,
+            name = %substation_name(owner),
+            pk = %hex::encode(key.verifying_key().to_bytes()),
+            "substation"
         );
     }
 
-    // Generate cells across the three cities at resolution 9
     let mut rng = StdRng::seed_from_u64(DETERMINISTIC_SEED);
-    let all_cells: Vec<u64> = CITIES
-        .iter()
-        .flat_map(|(city, lat, lng, count)| {
-            generate_cells_around(*lat, *lng, H3_RESOLUTION, *count, &mut rng)
-                .into_iter()
-                .inspect(move |&c| {
-                    tracing::debug!(city = %city, h3 = format!("{c:x}"), "generated cell");
-                })
-        })
-        .collect();
+    let cells = generate_all_cells(&mut rng);
+    info!(
+        total_cells = cells.len(),
+        detail_cells = cells
+            .iter()
+            .filter(|c| c.resolution == DETAIL_RESOLUTION)
+            .count(),
+        overview_cells = cells
+            .iter()
+            .filter(|c| c.resolution == OVERVIEW_RESOLUTION)
+            .count(),
+        "cell topology prepared"
+    );
 
-    info!(cell_count = all_cells.len(), "cell fixtures prepared");
-
-    // Write per-epoch
     let mut parent_root: Option<[u8; 32]> = None;
     for epoch_id in 0..EPOCH_COUNT {
-        let sealed_at = base_time() + chrono::Duration::minutes(epoch_id * 30);
-
+        let sealed_at = epoch_sealed_at(epoch_id);
         info!(epoch_id, sealed_at = %sealed_at, "writing epoch");
-        let new_root = write_epoch(
+
+        let root = write_epoch(
             &pool,
             &tenant,
             epoch_id,
             sealed_at,
             parent_root,
-            &all_cells,
+            &cells,
             &substations,
         )
         .await?;
 
         info!(
             epoch_id,
-            merkle_root = %hex::encode(new_root),
-            cells = all_cells.len(),
+            merkle_root = %hex::encode(root),
+            cells = cells.len(),
             "epoch sealed"
         );
-        parent_root = Some(new_root);
+        parent_root = Some(root);
     }
 
     info!(
         tenant = %tenant,
         epochs = EPOCH_COUNT,
-        cells_per_epoch = all_cells.len(),
-        total_rows = EPOCH_COUNT as usize * all_cells.len(),
+        cells_per_epoch = cells.len(),
+        total_rows = (EPOCH_COUNT as usize) * cells.len(),
         "seed complete"
     );
 
@@ -163,34 +161,91 @@ async fn main() -> Result<()> {
 }
 
 // -----------------------------------------------------------------------------
-// Generators
+// Cell generation
 // -----------------------------------------------------------------------------
 
-/// Generate `count` H3 cells clustered around (lat, lng) at the given resolution.
-/// Randomness is injected via the shared RNG so the fixture is reproducible.
-fn generate_cells_around(
-    center_lat: f64,
-    center_lng: f64,
+#[derive(Clone)]
+struct SeedCell {
+    h3: u64,
     resolution: u8,
-    count: u32,
-    rng: &mut StdRng,
-) -> Vec<u64> {
-    let res = Resolution::try_from(resolution).expect("valid resolution 0-15");
-    let center_cell: h3o::CellIndex = LatLng::new(center_lat, center_lng)
-        .expect("valid lat/lng")
-        .to_cell(res);
-
-    // Use grid_disk with small k — produces a deterministic set; shuffle + take.
-    let mut disk: Vec<h3o::CellIndex> = center_cell.grid_disk::<Vec<_>>(3);
-    shuffle(&mut disk, rng);
-
-    disk.into_iter()
-        .take(count as usize)
-        .map(u64::from)
-        .collect()
+    /// City slug (for detail cells) or "overview" for the res-6 layer.
+    owner: String,
 }
 
-/// Shuffle in-place using Fisher-Yates.
+fn generate_all_cells(rng: &mut StdRng) -> Vec<SeedCell> {
+    let mut out: Vec<SeedCell> = Vec::new();
+
+    // Detail cells — per-city grid_disk clusters at res 9
+    for (slug, lat, lng, count, _base) in CITIES {
+        let res = Resolution::try_from(DETAIL_RESOLUTION).expect("valid resolution");
+        let center: CellIndex = LatLng::new(*lat, *lng).expect("valid latlng").to_cell(res);
+        // grid_disk(k) yields 3k²+3k+1 cells; solve for k given target count.
+        let k = ((*count as f64 / 3.0).sqrt().ceil() as u32).max(4);
+        let mut disk: Vec<CellIndex> = center.grid_disk::<Vec<_>>(k);
+        shuffle(&mut disk, rng);
+        for c in disk.into_iter().take(*count as usize) {
+            out.push(SeedCell {
+                h3: u64::from(c),
+                resolution: DETAIL_RESOLUTION,
+                owner: slug.to_string(),
+            });
+        }
+    }
+
+    // Overview cells — res-6 polyfill of Italy bounding box
+    let overview = generate_overview_cells();
+    for c in overview {
+        out.push(SeedCell {
+            h3: c,
+            resolution: OVERVIEW_RESOLUTION,
+            owner: "overview".to_string(),
+        });
+    }
+
+    // Deduplicate (unlikely overlap but cheap guarantee)
+    out.sort_by_key(|c| c.h3);
+    out.dedup_by_key(|c| c.h3);
+    out
+}
+
+/// Generate H3 res-6 cells covering the Italy bounding box via polyfill.
+fn generate_overview_cells() -> Vec<u64> {
+    use geo::{Coord, LineString, Polygon};
+    use h3o::geom::{ContainmentMode, TilerBuilder};
+
+    let (lat_min, lat_max, lng_min, lng_max) = ITALY_BBOX;
+    let ring = LineString::from(vec![
+        Coord {
+            x: lng_min,
+            y: lat_min,
+        },
+        Coord {
+            x: lng_max,
+            y: lat_min,
+        },
+        Coord {
+            x: lng_max,
+            y: lat_max,
+        },
+        Coord {
+            x: lng_min,
+            y: lat_max,
+        },
+        Coord {
+            x: lng_min,
+            y: lat_min,
+        },
+    ]);
+    let poly = Polygon::new(ring, vec![]);
+    let res = Resolution::try_from(OVERVIEW_RESOLUTION).expect("valid res");
+
+    let mut tiler = TilerBuilder::new(res)
+        .containment_mode(ContainmentMode::IntersectsBoundary)
+        .build();
+    tiler.add(poly).expect("add polygon to tiler");
+    tiler.into_coverage().map(u64::from).collect()
+}
+
 fn shuffle<T>(slice: &mut [T], rng: &mut StdRng) {
     for i in (1..slice.len()).rev() {
         let j = rng.gen_range(0..=i);
@@ -198,105 +253,154 @@ fn shuffle<T>(slice: &mut [T], rng: &mut StdRng) {
     }
 }
 
-/// Base time for fixtures — midday UTC on the seeding date.
-fn base_time() -> DateTime<Utc> {
-    chrono::DateTime::parse_from_rfc3339("2026-04-01T12:00:00Z")
-        .expect("parse")
-        .with_timezone(&Utc)
+// -----------------------------------------------------------------------------
+// Substation identities
+// -----------------------------------------------------------------------------
+
+fn derive_substations() -> HashMap<String, SigningKey> {
+    let mut out = HashMap::new();
+    for (slug, _, _, _, _) in CITIES {
+        let mut rng = StdRng::seed_from_u64(substation_seed(slug));
+        let mut key_bytes = [0u8; 32];
+        rng.fill(&mut key_bytes);
+        out.insert(slug.to_string(), SigningKey::from_bytes(&key_bytes));
+    }
+    let mut rng = StdRng::seed_from_u64(substation_seed("national_grid_operations"));
+    let mut key_bytes = [0u8; 32];
+    rng.fill(&mut key_bytes);
+    out.insert("overview".to_string(), SigningKey::from_bytes(&key_bytes));
+    out
+}
+
+fn substation_seed(slug: &str) -> u64 {
+    let h = blake3::hash(slug.as_bytes());
+    let b = h.as_bytes();
+    u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
+}
+
+fn substation_name(owner: &str) -> String {
+    if owner == "overview" {
+        "substation_italy_national_grid".to_string()
+    } else {
+        format!("substation_{owner}_grid_primary")
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Temporal structure
+// -----------------------------------------------------------------------------
+
+fn epoch_sealed_at(epoch_id: i64) -> DateTime<Utc> {
+    let base = chrono::DateTime::parse_from_rfc3339("2026-04-01T06:00:00Z")
+        .expect("parse base")
+        .with_timezone(&Utc);
+    base + chrono::Duration::hours(12 * epoch_id)
+}
+
+/// Morning epochs (even) = 0.85×, evening epochs (odd) = 1.20×.
+fn diurnal_factor(epoch_id: i64) -> f64 {
+    if epoch_id % 2 == 0 {
+        0.85
+    } else {
+        1.20
+    }
+}
+
+fn cell_value(cell: &SeedCell, epoch_id: i64) -> f64 {
+    let base = city_base_load(&cell.owner);
+    let diurnal = diurnal_factor(epoch_id);
+
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(&cell.h3.to_be_bytes());
+    hasher.update(&epoch_id.to_be_bytes());
+    let h = hasher.finalize();
+    let b = h.as_bytes();
+    let n = u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as f64 / u32::MAX as f64;
+    let noise = (n - 0.5) * 0.20;
+
+    (base * diurnal * (1.0 + noise)).clamp(0.0, 2.0)
+}
+
+fn city_base_load(owner: &str) -> f64 {
+    if owner == "overview" {
+        return 0.95;
+    }
+    for (slug, _, _, _, base) in CITIES {
+        if *slug == owner {
+            return *base;
+        }
+    }
+    0.80
 }
 
 // -----------------------------------------------------------------------------
 // Writer
 // -----------------------------------------------------------------------------
 
-/// Write all cell states for one epoch, compute the Merkle root, insert the
-/// epoch row, and return the root.
 async fn write_epoch(
     pool: &PgPool,
     tenant: &Uuid,
     epoch_id: i64,
     sealed_at: DateTime<Utc>,
     parent_root: Option<[u8; 32]>,
-    cells: &[u64],
-    substations: &[(String, SigningKey)],
+    cells: &[SeedCell],
+    substations: &HashMap<String, SigningKey>,
 ) -> Result<[u8; 32]> {
-    // Sort cells for deterministic Merkle root construction. This mirrors
-    // how the render engine's merkle::proof_for builds the tree.
-    let mut ordered: Vec<u64> = cells.to_vec();
-    ordered.sort();
+    // Canonical leaf order — matches how the server builds Merkle proofs.
+    let mut ordered: Vec<&SeedCell> = cells.iter().collect();
+    ordered.sort_by_key(|c| c.h3 as i64);
 
+    struct Row<'a> {
+        cell: &'a SeedCell,
+        payload: Value,
+        identity_pk: [u8; 32],
+        content_hash: [u8; 32],
+        signature: [u8; 64],
+    }
+
+    let mut rows: Vec<Row<'_>> = Vec::with_capacity(ordered.len());
     let mut content_hashes: Vec<[u8; 32]> = Vec::with_capacity(ordered.len());
 
-    // Single transaction for the whole epoch: cells + epoch row atomically.
-    let mut tx = pool.begin().await?;
+    for cell in &ordered {
+        let signing_key = substations
+            .get(&cell.owner)
+            .ok_or_else(|| anyhow::anyhow!("no substation for owner {}", cell.owner))?;
+        let identity_pk = signing_key.verifying_key().to_bytes();
 
-    // Set the tenant session var so any RLS policies fire correctly when this
-    // role is non-superuser. Harmless when running as postgres (bypasses RLS).
+        let payload = json!({
+            "measurement":   "grid_load_pu",
+            "value":         cell_value(cell, epoch_id),
+            "unit":          "per_unit",
+            "quality":       "measured",
+            "epoch":         epoch_id,
+            "h3_resolution": cell.resolution,
+            "owner":         cell.owner,
+            "timestamp":     sealed_at.to_rfc3339(),
+        });
+
+        let canonical = render_core::tools::canonical_json(&payload)
+            .map_err(|e| anyhow::anyhow!("canonical_json: {e}"))?;
+        let content_hash: [u8; 32] = *blake3::hash(canonical.as_bytes()).as_bytes();
+        let signature: [u8; 64] = signing_key.sign(&content_hash).to_bytes();
+
+        rows.push(Row {
+            cell,
+            payload,
+            identity_pk,
+            content_hash,
+            signature,
+        });
+        content_hashes.push(content_hash);
+    }
+
+    let merkle_root = merkle_root(&content_hashes);
+
+    let mut tx = pool.begin().await?;
     sqlx::query("SELECT set_config('app.current_tenant_id', $1, true)")
         .bind(tenant.to_string())
         .execute(&mut *tx)
         .await?;
 
-    // Epoch row must exist before cell_states rows (FK constraint). Insert a
-    // placeholder with a zero root; update it at the end with the real root.
-    //
-    // Actually we want transactional atomicity: use a DEFERRABLE constraint? No.
-    // Simpler: compute Merkle root first (doesn't need DB), insert epoch, then
-    // insert cells. The reason we can do it in this order: we sign each cell
-    // off the content_hash of its payload, not off the Merkle root.
-
-    // --- Phase 1: generate + hash + sign every cell's payload ---
-    #[derive(Clone)]
-    struct CellRow {
-        h3: i64,
-        identity_pk: [u8; 32],
-        payload: serde_json::Value,
-        content_hash: [u8; 32],
-        signature: [u8; 64],
-    }
-
-    let mut rows: Vec<CellRow> = Vec::with_capacity(ordered.len());
-
-    for (idx, &h3) in ordered.iter().enumerate() {
-        // Pick a substation deterministically by cell index.
-        let (_name, signing_key) = &substations[idx % substations.len()];
-        let identity_pk = signing_key.verifying_key().to_bytes();
-
-        // Payload: synthetic grid telemetry.
-        let payload = json!({
-            "epoch":           epoch_id,
-            "measurement":     "grid_load_pu",
-            "value":           load_for_cell(h3, epoch_id),
-            "quality":         "measured",
-            "unit":            "per_unit",
-            "timestamp":       sealed_at.to_rfc3339(),
-            "h3_resolution":   H3_RESOLUTION,
-        });
-
-        // Canonical JSON → blake3 content_hash
-        let canonical = render_core::tools::canonical_json(&payload)
-            .map_err(|e| anyhow::anyhow!("canonical_json: {e}"))?;
-        let content_hash: [u8; 32] = *blake3::hash(canonical.as_bytes()).as_bytes();
-
-        // Ed25519 sign the content_hash
-        let signature: [u8; 64] = signing_key.sign(&content_hash).to_bytes();
-
-        rows.push(CellRow {
-            h3: h3 as i64,
-            identity_pk,
-            payload,
-            content_hash,
-            signature,
-        });
-
-        content_hashes.push(content_hash);
-    }
-
-    // --- Phase 2: Merkle root over sorted content_hashes ---
-    let merkle_root = merkle_root(&content_hashes);
-
-    // --- Phase 3: insert epoch row first (FK requirement) ---
-    let parent = parent_root.map(|r| r.to_vec());
     let epoch_exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM epochs WHERE tenant_id = $1 AND epoch_id = $2)",
     )
@@ -308,64 +412,52 @@ async fn write_epoch(
     if epoch_exists {
         warn!(
             epoch_id,
-            "epoch already exists — skipping insert, cells will ON CONFLICT skip too"
+            "epoch already exists — skipping epoch insert; cell inserts will ON CONFLICT skip"
         );
     } else {
         sqlx::query(
-            r#"
-            INSERT INTO epochs (tenant_id, epoch_id, sealed_at, merkle_root, parent_root, cell_count)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            "#,
+            "INSERT INTO epochs (tenant_id, epoch_id, sealed_at, merkle_root, parent_root, cell_count) \
+             VALUES ($1, $2, $3, $4, $5, $6)",
         )
         .bind(tenant)
         .bind(epoch_id)
         .bind(sealed_at)
         .bind(merkle_root.to_vec())
-        .bind(parent)
+        .bind(parent_root.map(|r| r.to_vec()))
         .bind(rows.len() as i64)
         .execute(&mut *tx)
         .await?;
     }
 
-    // --- Phase 4: insert cell_states (idempotent via ON CONFLICT) ---
     let mut inserted = 0usize;
     let mut skipped = 0usize;
-    for row in &rows {
-        let affected = sqlx::query(
-            r#"
-            INSERT INTO cell_states
-                (tenant_id, h3_cell, epoch_id, identity_pk, payload, content_hash, signature)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (tenant_id, h3_cell, epoch_id) DO NOTHING
-            "#,
-        )
-        .bind(tenant)
-        .bind(row.h3)
-        .bind(epoch_id)
-        .bind(row.identity_pk.to_vec())
-        .bind(&row.payload)
-        .bind(row.content_hash.to_vec())
-        .bind(row.signature.to_vec())
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
-        if affected > 0 {
-            inserted += 1;
-        } else {
-            skipped += 1;
-        }
+    for chunk in rows.chunks(BATCH_SIZE) {
+        let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(
+            "INSERT INTO cell_states \
+             (tenant_id, h3_cell, epoch_id, identity_pk, payload, content_hash, signature) ",
+        );
+        qb.push_values(chunk, |mut b, row| {
+            b.push_bind(tenant)
+                .push_bind(row.cell.h3 as i64)
+                .push_bind(epoch_id)
+                .push_bind(row.identity_pk.to_vec())
+                .push_bind(&row.payload)
+                .push_bind(row.content_hash.to_vec())
+                .push_bind(row.signature.to_vec());
+        });
+        qb.push(" ON CONFLICT (tenant_id, h3_cell, epoch_id) DO NOTHING");
+        let affected = qb.build().execute(&mut *tx).await?.rows_affected() as usize;
+        inserted += affected;
+        skipped += chunk.len() - affected;
     }
 
     tx.commit().await?;
 
-    info!(epoch_id, inserted, skipped, "cell inserts complete");
-
+    info!(epoch_id, inserted, skipped, "cells written");
     Ok(merkle_root)
 }
 
-/// Verify the seed tenant row exists. If not, migration 0001 hasn't been applied.
 async fn verify_tenant_exists(pool: &PgPool, tenant: &Uuid) -> Result<()> {
-    // As postgres role we bypass RLS — this works regardless of session var.
     let exists: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenants WHERE tenant_id = $1)")
             .bind(tenant)
@@ -378,12 +470,9 @@ async fn verify_tenant_exists(pool: &PgPool, tenant: &Uuid) -> Result<()> {
 }
 
 // -----------------------------------------------------------------------------
-// Merkle root construction (matches mobydb_client::merkle order & pad rule)
+// Merkle root
 // -----------------------------------------------------------------------------
 
-/// Compute the Merkle root over an ordered list of 32-byte leaves.
-/// Odd layers duplicate the last node (Bitcoin-style).
-/// Empty input returns the zero hash.
 fn merkle_root(leaves: &[[u8; 32]]) -> [u8; 32] {
     if leaves.is_empty() {
         return [0u8; 32];
@@ -404,21 +493,4 @@ fn merkle_root(leaves: &[[u8; 32]]) -> [u8; 32] {
         layer = next;
     }
     layer[0]
-}
-
-// -----------------------------------------------------------------------------
-// Synthetic telemetry helper
-// -----------------------------------------------------------------------------
-
-/// Deterministic pseudo-random load value in [0.0, 1.5] per-unit, derived from
-/// (h3_cell, epoch_id). Stable across runs.
-fn load_for_cell(h3: u64, epoch_id: i64) -> f64 {
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(&h3.to_be_bytes());
-    hasher.update(&epoch_id.to_be_bytes());
-    let h = hasher.finalize();
-    let b = h.as_bytes();
-    let n = u32::from_be_bytes([b[0], b[1], b[2], b[3]]);
-    // Map to [0.0, 1.5]
-    (n as f64 / u32::MAX as f64) * 1.5
 }
