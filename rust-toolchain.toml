@@ -1,0 +1,6 @@
+[toolchain]
+# Pinned for reproducibility across CI, Railway, Hetzner, and dev machines.
+# Bump deliberately; don't let it drift.
+channel = "1.88.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

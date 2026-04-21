@@ -1,0 +1,26 @@
+[package]
+name         = "render-core"
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+authors      = { workspace = true }
+repository   = { workspace = true }
+
+[dependencies]
+serde            = { workspace = true }
+serde_json       = { workspace = true }
+schemars         = { workspace = true }
+uuid             = { workspace = true }
+chrono           = { workspace = true }
+anyhow           = { workspace = true }
+thiserror        = { workspace = true }
+tracing          = { workspace = true }
+blake3           = { workspace = true }
+ed25519-dalek    = { workspace = true }
+hex              = { workspace = true }
+h3o              = { workspace = true }
+async-trait      = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

@@ -1,0 +1,13 @@
+target/
+.git/
+.github/
+docs/
+tests/e2e/
+*.md
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+node_modules/

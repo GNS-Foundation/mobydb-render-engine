@@ -1,0 +1,44 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Secrets & local env — NEVER commit
+.env
+.env.*
+!.env.example
+
+# Platform / editor
+.DS_Store
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# Build / cache
+/dist/
+/build/
+node_modules/
+*.log
+
+# Local runtime artifacts
+/tmp/
+/var/
+*.pid
+*.sock
+
+# Coverage
+/coverage/
+/tarpaulin-report.html
+*.profraw
+
+# Docker
+.dockerignore.local
+
+# OS
+Thumbs.db
+
+# MobyDB render engine specific
+/render-cache/
+/snapshots/

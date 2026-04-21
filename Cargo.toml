@@ -1,0 +1,89 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/render-core",
+    "crates/mobydb-client",
+    "crates/mcp-server",
+]
+
+[workspace.package]
+version      = "0.1.0"
+edition      = "2021"
+rust-version = "1.88"
+license      = "Proprietary"
+authors      = ["ULISSY s.r.l. <hello@ulissy.app>"]
+repository   = "https://github.com/GNS-Foundation/mobydb-render-engine"
+
+[workspace.dependencies]
+# -- async runtime
+tokio        = { version = "1.40", features = ["full"] }
+async-trait  = "0.1"
+futures      = "0.3"
+
+# -- serde & schema
+serde        = { version = "1", features = ["derive"] }
+serde_json   = "1"
+schemars     = { version = "0.8", features = ["uuid1", "chrono"] }
+uuid         = { version = "1.10", features = ["v4", "serde"] }
+chrono       = { version = "0.4", features = ["serde"] }
+
+# -- error handling
+anyhow       = "1"
+thiserror    = "1"
+
+# -- logging / telemetry
+tracing              = "0.1"
+tracing-subscriber   = { version = "0.3", features = ["env-filter", "json"] }
+tracing-opentelemetry = "0.27"
+opentelemetry        = "0.26"
+opentelemetry-otlp   = { version = "0.26", features = ["grpc-tonic"] }
+opentelemetry_sdk    = { version = "0.26", features = ["rt-tokio"] }
+
+# -- HTTP server
+axum         = { version = "0.7", features = ["macros", "ws"] }
+tower        = { version = "0.5", features = ["timeout", "limit"] }
+tower-http   = { version = "0.6", features = ["trace", "cors", "compression-full", "request-id"] }
+hyper        = { version = "1", features = ["full"] }
+
+# -- database
+sqlx         = { version = "0.8", default-features = false, features = [
+    "runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "migrate"
+] }
+
+# -- crypto
+blake3       = "1.5"
+ed25519-dalek = { version = "2.1", features = ["rand_core", "serde"] }
+hex          = "0.4"
+base64       = "0.22"
+
+# -- h3
+h3o          = "0.7"
+
+# -- config
+dotenvy      = "0.15"
+envy         = "0.4"
+
+# -- metrics
+metrics      = "0.24"
+metrics-exporter-prometheus = "0.16"
+
+# -- http client (for OAuth JWKS fetch)
+reqwest      = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+jsonwebtoken = "9"
+
+[profile.release]
+lto           = "thin"
+codegen-units = 1
+opt-level     = 3
+strip         = "symbols"
+panic         = "abort"
+
+[profile.release-debug]
+inherits = "release"
+debug    = true
+strip    = "none"
+
+# Faster dev builds at cost of some runtime speed
+[profile.dev]
+opt-level = 0
+debug     = 1
