@@ -42,3 +42,5 @@ Thumbs.db
 # MobyDB render engine specific
 /render-cache/
 /snapshots/
+demo/config.js
+demo/*.bak

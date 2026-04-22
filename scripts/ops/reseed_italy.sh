@@ -3,7 +3,8 @@
 # scripts/ops/reseed_italy.sh
 # =============================================================================
 # One-shot ops script. Clears existing seed-tenant data and loads the new
-# Italy-wide fixture (~850 cells × 10 epochs).
+# OSM-based fixture: real substations in Lazio + Lombardia, ~4,200 cells
+# at H3 res 11, across 10 epochs.
 #
 # Not a versioned migration — live-DB ops only. Safe to run multiple times;
 # the seeder itself is deterministic and idempotent, but this script drops
@@ -14,6 +15,8 @@
 #   - DATABASE_URL points at a Postgres role with superuser (for DELETE + INSERT)
 #   - The seed tenant (00000000-0000-0000-0000-000000000001) exists
 #     (migration 0001 creates it)
+#   - fixtures/osm/substations.geojson exists (run fixtures/osm/fetch.py to
+#     refresh from Overpass if needed)
 #
 # Usage:
 #   export DATABASE_URL=<postgres-role URL>
@@ -38,6 +41,12 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+if [[ ! -f "$REPO_ROOT/fixtures/osm/substations.geojson" ]]; then
+    echo "error: fixtures/osm/substations.geojson missing" >&2
+    echo "  run: python3 fixtures/osm/fetch.py" >&2
+    exit 1
+fi
+
 echo "==> clearing existing seed-tenant cells and epochs"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
 BEGIN;
@@ -61,7 +70,7 @@ COMMIT;
 SQL
 
 echo
-echo "==> running seed-data binary"
+echo "==> running seed-data binary (OSM substations + 10 epochs)"
 cd "$REPO_ROOT"
 DATABASE_URL="$DATABASE_URL" cargo run --bin seed-data --release
 
@@ -77,13 +86,14 @@ SELECT COUNT(*) AS total_epochs FROM epochs
  WHERE tenant_id = '00000000-0000-0000-0000-000000000001';
 
 SELECT
-    (payload->>'owner') AS city,
+    COALESCE(payload->>'operator', '(unspecified)') AS operator,
     COUNT(*) AS cells_at_epoch_0
 FROM cell_states
 WHERE tenant_id = '00000000-0000-0000-0000-000000000001'
   AND epoch_id = 0
-GROUP BY payload->>'owner'
-ORDER BY cells_at_epoch_0 DESC;
+GROUP BY payload->>'operator'
+ORDER BY cells_at_epoch_0 DESC
+LIMIT 12;
 SQL
 
 echo

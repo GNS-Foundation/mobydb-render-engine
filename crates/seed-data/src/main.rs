@@ -1,32 +1,33 @@
-//! seed-data — load synthetic grid telemetry into MobyDB for demo use.
+//! seed-data — ingest OSM power infrastructure into MobyDB.
 //!
-//! Writes ~850 H3 cells covering Italy across 10 epochs, signed by 11
-//! per-city substation identities (10 cities + national overview), with
-//! plausibly-shaped grid load values (diurnal cycle + small per-cell
-//! noise + per-city baseline).
+//! Reads `fixtures/osm/substations.geojson` (real OpenStreetMap substations in
+//! Lazio + Lombardia) and seeds an H3 res-11 cell per substation across 10
+//! epochs with synthetic grid-load telemetry.
 //!
-//! Coverage:
-//!   - 10 Italian cities: Milano, Torino, Venezia, Genova, Bologna,
-//!     Firenze, Roma, Napoli, Bari, Palermo
-//!   - H3 res 9 (~0.1 km²) around each city — ~800 detail cells total
-//!   - H3 res 6 (~36 km²) national overview polyfill of Italy bbox
-//!   - 10 epochs spanning 5 simulated days (morning + evening each day)
+//! Each substation becomes its own Ed25519 identity, derived deterministically
+//! from the OSM id. This means the `writer_pk` in every audit bundle maps back
+//! to a specific real substation in the real grid — so clicking on a cell in
+//! the demo and seeing `operator: Terna S.p.A.` or `operator: Acea Distribuzione`
+//! is not synthetic framing, it's the genuine operator tag from OSM.
 //!
-//! Idempotent: re-running against a tenant that already has data at these
-//! (tenant, h3, epoch) keys will ON CONFLICT DO NOTHING per row. For a
-//! clean reseed, run scripts/ops/reseed_italy.sh first.
+//! Transmission lines (`fixtures/osm/transmission_lines.geojson`) are NOT
+//! seeded as cells — they're polylines, rendered as an overlay by the demo
+//! frontend directly from the GeoJSON.
+//!
+//! Idempotent: re-running ON CONFLICT DO NOTHING. For a clean reseed,
+//! run `scripts/ops/reseed_italy.sh` first.
 //!
 //! Run:
 //!   DATABASE_URL=<postgres-role URL> cargo run --bin seed-data
 
-use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signer, SigningKey};
 use h3o::{CellIndex, LatLng, Resolution};
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Postgres, QueryBuilder};
@@ -38,35 +39,54 @@ use uuid::Uuid;
 // -----------------------------------------------------------------------------
 
 const TENANT_ID: &str = "00000000-0000-0000-0000-000000000001";
-const DETERMINISTIC_SEED: u64 = 20260421;
-
-/// 10 Italian cities with grid relevance. Fields:
-/// `(slug, lat, lng, detail_cell_count, base_load_pu)`
-const CITIES: &[(&str, f64, f64, u32, f64)] = &[
-    ("milano", 45.4642, 9.1900, 120, 1.15),
-    ("torino", 45.0703, 7.6869, 90, 1.00),
-    ("venezia", 45.4408, 12.3155, 60, 0.75),
-    ("genova", 44.4056, 8.9463, 70, 0.85),
-    ("bologna", 44.4949, 11.3426, 80, 0.90),
-    ("firenze", 43.7696, 11.2558, 70, 0.85),
-    ("roma", 41.9028, 12.4964, 110, 1.10),
-    ("napoli", 40.8518, 14.2681, 90, 1.00),
-    ("bari", 41.1171, 16.8719, 55, 0.80),
-    ("palermo", 38.1157, 13.3615, 65, 0.90),
-];
-
-const DETAIL_RESOLUTION: u8 = 9;
-const OVERVIEW_RESOLUTION: u8 = 6;
-
-/// Italy bounding box for the res-6 overview layer.
-/// (lat_min, lat_max, lng_min, lng_max)
-const ITALY_BBOX: (f64, f64, f64, f64) = (35.5, 47.1, 6.6, 18.6);
-
+const H3_RESOLUTION: u8 = 11;
 const EPOCH_COUNT: i64 = 10;
 
-/// Batch size for INSERT — 100 rows × 7 bind params = 700 params per
-/// statement, well under Postgres' ~32k limit.
+/// Batch size for INSERT — 100 rows × 7 bind params = 700 params per statement,
+/// well under Postgres' ~32k parameter limit.
 const BATCH_SIZE: usize = 100;
+
+/// Path (relative to repo root) to the processed substations GeoJSON.
+const SUBSTATIONS_FIXTURE: &str = "fixtures/osm/substations.geojson";
+
+// -----------------------------------------------------------------------------
+// GeoJSON types (minimal subset we need)
+// -----------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct FeatureCollection {
+    features: Vec<Feature>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Feature {
+    geometry: Geometry,
+    properties: SubstationProps,
+}
+
+#[derive(Debug, Deserialize)]
+struct Geometry {
+    #[serde(rename = "type")]
+    _geom_type: String,
+    /// Point geometries come in as [lon, lat]
+    coordinates: [f64; 2],
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct SubstationProps {
+    osm_id: String,
+    #[serde(default)]
+    operator: Option<String>,
+    #[serde(default)]
+    #[serde(rename = "ref")]
+    ref_: Option<String>,
+    #[serde(default)]
+    voltage: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    substation_type: Option<String>,
+}
 
 // -----------------------------------------------------------------------------
 // main
@@ -85,9 +105,27 @@ async fn main() -> Result<()> {
 
     let database_url = std::env::var("DATABASE_URL")
         .context("DATABASE_URL must be set (postgres-role URL, not render_app)")?;
-
     let tenant: Uuid = TENANT_ID.parse()?;
 
+    // --- locate + load fixture ---
+    let fixture_path = resolve_fixture_path(SUBSTATIONS_FIXTURE)?;
+    info!(path = %fixture_path.display(), "loading OSM substations fixture");
+    let fc: FeatureCollection = {
+        let bytes = std::fs::read(&fixture_path)
+            .with_context(|| format!("read fixture {}", fixture_path.display()))?;
+        serde_json::from_slice(&bytes).context("parse substations.geojson")?
+    };
+    info!(count = fc.features.len(), "substations loaded");
+
+    // --- convert features into seed units ---
+    let substations = build_substations(&fc.features)?;
+    info!(
+        usable = substations.len(),
+        discarded = fc.features.len() - substations.len(),
+        "substations ready to seed"
+    );
+
+    // --- connect DB ---
     info!("connecting to database");
     let pool = PgPoolOptions::new()
         .max_connections(5)
@@ -98,32 +136,10 @@ async fn main() -> Result<()> {
 
     verify_tenant_exists(&pool, &tenant).await?;
 
-    let substations = derive_substations();
-    info!(count = substations.len(), "substation identities ready");
-    for (owner, key) in &substations {
-        info!(
-            owner = %owner,
-            name = %substation_name(owner),
-            pk = %hex::encode(key.verifying_key().to_bytes()),
-            "substation"
-        );
-    }
+    // --- summary of operators we're about to seed ---
+    log_operator_summary(&substations);
 
-    let mut rng = StdRng::seed_from_u64(DETERMINISTIC_SEED);
-    let cells = generate_all_cells(&mut rng);
-    info!(
-        total_cells = cells.len(),
-        detail_cells = cells
-            .iter()
-            .filter(|c| c.resolution == DETAIL_RESOLUTION)
-            .count(),
-        overview_cells = cells
-            .iter()
-            .filter(|c| c.resolution == OVERVIEW_RESOLUTION)
-            .count(),
-        "cell topology prepared"
-    );
-
+    // --- seed 10 epochs ---
     let mut parent_root: Option<[u8; 32]> = None;
     for epoch_id in 0..EPOCH_COUNT {
         let sealed_at = epoch_sealed_at(epoch_id);
@@ -135,7 +151,6 @@ async fn main() -> Result<()> {
             epoch_id,
             sealed_at,
             parent_root,
-            &cells,
             &substations,
         )
         .await?;
@@ -143,7 +158,7 @@ async fn main() -> Result<()> {
         info!(
             epoch_id,
             merkle_root = %hex::encode(root),
-            cells = cells.len(),
+            cells = substations.len(),
             "epoch sealed"
         );
         parent_root = Some(root);
@@ -152,8 +167,8 @@ async fn main() -> Result<()> {
     info!(
         tenant = %tenant,
         epochs = EPOCH_COUNT,
-        cells_per_epoch = cells.len(),
-        total_rows = (EPOCH_COUNT as usize) * cells.len(),
+        cells_per_epoch = substations.len(),
+        total_rows = (EPOCH_COUNT as usize) * substations.len(),
         "seed complete"
     );
 
@@ -161,128 +176,145 @@ async fn main() -> Result<()> {
 }
 
 // -----------------------------------------------------------------------------
-// Cell generation
+// Fixture resolution
+// -----------------------------------------------------------------------------
+
+/// Resolve `fixtures/osm/substations.geojson` relative to wherever the binary
+/// was invoked. Walks up from CWD looking for the fixture, so it works from
+/// the workspace root AND from the crate directory.
+fn resolve_fixture_path(relative: &str) -> Result<PathBuf> {
+    let mut cwd = std::env::current_dir().context("cwd")?;
+    loop {
+        let candidate = cwd.join(relative);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+        if !cwd.pop() {
+            bail!(
+                "could not find fixture `{relative}` (searched upward from CWD); \
+                 run from repo root, or set CWD to a directory containing it"
+            );
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Substation modelling
 // -----------------------------------------------------------------------------
 
 #[derive(Clone)]
-struct SeedCell {
+struct Substation {
+    osm_id: String,
     h3: u64,
-    resolution: u8,
-    /// City slug (for detail cells) or "overview" for the res-6 layer.
-    owner: String,
+    lat: f64,
+    lon: f64,
+    props: SubstationProps,
+    signing_key: SigningKey,
+    /// Mapped load baseline based on voltage class (0.7..1.2 range).
+    base_load_pu: f64,
 }
 
-fn generate_all_cells(rng: &mut StdRng) -> Vec<SeedCell> {
-    let mut out: Vec<SeedCell> = Vec::new();
+fn build_substations(features: &[Feature]) -> Result<Vec<Substation>> {
+    let res = Resolution::try_from(H3_RESOLUTION).expect("valid H3 resolution");
+    let mut out = Vec::with_capacity(features.len());
 
-    // Detail cells — per-city grid_disk clusters at res 9
-    for (slug, lat, lng, count, _base) in CITIES {
-        let res = Resolution::try_from(DETAIL_RESOLUTION).expect("valid resolution");
-        let center: CellIndex = LatLng::new(*lat, *lng).expect("valid latlng").to_cell(res);
-        // grid_disk(k) yields 3k²+3k+1 cells; solve for k given target count.
-        let k = ((*count as f64 / 3.0).sqrt().ceil() as u32).max(4);
-        let mut disk: Vec<CellIndex> = center.grid_disk::<Vec<_>>(k);
-        shuffle(&mut disk, rng);
-        for c in disk.into_iter().take(*count as usize) {
-            out.push(SeedCell {
-                h3: u64::from(c),
-                resolution: DETAIL_RESOLUTION,
-                owner: slug.to_string(),
-            });
-        }
-    }
+    for f in features {
+        let [lon, lat] = f.geometry.coordinates;
 
-    // Overview cells — res-6 polyfill of Italy bounding box
-    let overview = generate_overview_cells();
-    for c in overview {
-        out.push(SeedCell {
-            h3: c,
-            resolution: OVERVIEW_RESOLUTION,
-            owner: "overview".to_string(),
+        // Some OSM entries can have out-of-range coords; skip them
+        let lat_lng = match LatLng::new(lat, lon) {
+            Ok(ll) => ll,
+            Err(_) => {
+                warn!(osm_id = %f.properties.osm_id, lat, lon, "skipping invalid coords");
+                continue;
+            }
+        };
+        let cell: CellIndex = lat_lng.to_cell(res);
+
+        // Deterministic signing key from osm_id — this is the key property that
+        // makes the demo credible: `writer_pk` always maps back to the exact
+        // same real-world substation.
+        let signing_key = derive_signing_key(&f.properties.osm_id);
+
+        // Base load heuristic from voltage tag (per-unit values). Higher
+        // voltage classes carry higher load proxies.
+        let base_load_pu = voltage_to_base_load(f.properties.voltage.as_deref());
+
+        out.push(Substation {
+            osm_id: f.properties.osm_id.clone(),
+            h3: u64::from(cell),
+            lat,
+            lon,
+            props: f.properties.clone(),
+            signing_key,
+            base_load_pu,
         });
     }
 
-    // Deduplicate (unlikely overlap but cheap guarantee)
-    out.sort_by_key(|c| c.h3);
-    out.dedup_by_key(|c| c.h3);
-    out
+    // Deduplicate by H3 cell — multiple substations in the same res-11 cell
+    // are rare but possible (e.g. a campus with two separate entries). Keep
+    // first for now; a future improvement is to aggregate.
+    out.sort_by_key(|s| s.h3);
+    let before = out.len();
+    out.dedup_by_key(|s| s.h3);
+    let after = out.len();
+    if before != after {
+        info!(
+            collapsed = before - after,
+            "merged duplicates in same H3 cell"
+        );
+    }
+
+    Ok(out)
 }
 
-/// Generate H3 res-6 cells covering the Italy bounding box via polyfill.
-fn generate_overview_cells() -> Vec<u64> {
-    use geo::{Coord, LineString, Polygon};
-    use h3o::geom::{ContainmentMode, TilerBuilder};
-
-    let (lat_min, lat_max, lng_min, lng_max) = ITALY_BBOX;
-    let ring = LineString::from(vec![
-        Coord {
-            x: lng_min,
-            y: lat_min,
-        },
-        Coord {
-            x: lng_max,
-            y: lat_min,
-        },
-        Coord {
-            x: lng_max,
-            y: lat_max,
-        },
-        Coord {
-            x: lng_min,
-            y: lat_max,
-        },
-        Coord {
-            x: lng_min,
-            y: lat_min,
-        },
-    ]);
-    let poly = Polygon::new(ring, vec![]);
-    let res = Resolution::try_from(OVERVIEW_RESOLUTION).expect("valid res");
-
-    let mut tiler = TilerBuilder::new(res)
-        .containment_mode(ContainmentMode::IntersectsBoundary)
-        .build();
-    tiler.add(poly).expect("add polygon to tiler");
-    tiler.into_coverage().map(u64::from).collect()
+/// Derive a deterministic Ed25519 keypair from a stable OSM identifier.
+/// blake3(osm_id) → 32 bytes → SigningKey.
+fn derive_signing_key(osm_id: &str) -> SigningKey {
+    let h = blake3::hash(osm_id.as_bytes());
+    let bytes: [u8; 32] = *h.as_bytes();
+    SigningKey::from_bytes(&bytes)
 }
 
-fn shuffle<T>(slice: &mut [T], rng: &mut StdRng) {
-    for i in (1..slice.len()).rev() {
-        let j = rng.gen_range(0..=i);
-        slice.swap(i, j);
+/// Map voltage string (may be "380000", "132000;220000", etc.) to a base load.
+/// Unknown voltages fall back to 0.90 (medium).
+fn voltage_to_base_load(v: Option<&str>) -> f64 {
+    let Some(s) = v else { return 0.90 };
+    // Take the max voltage value if multiple are listed
+    let max_kv = s
+        .split(';')
+        .filter_map(|part| part.trim().parse::<u64>().ok())
+        .max()
+        .map(|raw| raw / 1000)
+        .unwrap_or(0);
+
+    match max_kv {
+        v if v >= 380 => 1.15,
+        v if v >= 220 => 1.05,
+        v if v >= 132 => 0.95,
+        v if v >= 60 => 0.85,
+        v if v >= 20 => 0.80,
+        _ => 0.90,
     }
 }
 
-// -----------------------------------------------------------------------------
-// Substation identities
-// -----------------------------------------------------------------------------
-
-fn derive_substations() -> HashMap<String, SigningKey> {
-    let mut out = HashMap::new();
-    for (slug, _, _, _, _) in CITIES {
-        let mut rng = StdRng::seed_from_u64(substation_seed(slug));
-        let mut key_bytes = [0u8; 32];
-        rng.fill(&mut key_bytes);
-        out.insert(slug.to_string(), SigningKey::from_bytes(&key_bytes));
+fn log_operator_summary(subs: &[Substation]) {
+    use std::collections::BTreeMap;
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for s in subs {
+        let key = s
+            .props
+            .operator
+            .as_deref()
+            .map(|o| o.to_string())
+            .unwrap_or_else(|| "(unspecified)".to_string());
+        *counts.entry(key).or_insert(0) += 1;
     }
-    let mut rng = StdRng::seed_from_u64(substation_seed("national_grid_operations"));
-    let mut key_bytes = [0u8; 32];
-    rng.fill(&mut key_bytes);
-    out.insert("overview".to_string(), SigningKey::from_bytes(&key_bytes));
-    out
-}
-
-fn substation_seed(slug: &str) -> u64 {
-    let h = blake3::hash(slug.as_bytes());
-    let b = h.as_bytes();
-    u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
-}
-
-fn substation_name(owner: &str) -> String {
-    if owner == "overview" {
-        "substation_italy_national_grid".to_string()
-    } else {
-        format!("substation_{owner}_grid_primary")
+    let mut sorted: Vec<_> = counts.into_iter().collect();
+    sorted.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+    info!("operator breakdown (top 10):");
+    for (op, n) in sorted.iter().take(10) {
+        info!("  {op:<40} {n}");
     }
 }
 
@@ -290,6 +322,7 @@ fn substation_name(owner: &str) -> String {
 // Temporal structure
 // -----------------------------------------------------------------------------
 
+/// Epoch 0 = 2026-04-01 06:00 UTC; +12h per epoch. 10 epochs = 5 days.
 fn epoch_sealed_at(epoch_id: i64) -> DateTime<Utc> {
     let base = chrono::DateTime::parse_from_rfc3339("2026-04-01T06:00:00Z")
         .expect("parse base")
@@ -306,31 +339,21 @@ fn diurnal_factor(epoch_id: i64) -> f64 {
     }
 }
 
-fn cell_value(cell: &SeedCell, epoch_id: i64) -> f64 {
-    let base = city_base_load(&cell.owner);
+/// Synthetic grid_load_pu for a substation at an epoch.
+/// = voltage_baseline × diurnal × (1 + small_per_cell_noise)
+fn cell_value(sub: &Substation, epoch_id: i64) -> f64 {
     let diurnal = diurnal_factor(epoch_id);
 
+    // Stable per-(cell, epoch) noise in [-0.10, +0.10]
     let mut hasher = blake3::Hasher::new();
-    hasher.update(&cell.h3.to_be_bytes());
+    hasher.update(&sub.h3.to_be_bytes());
     hasher.update(&epoch_id.to_be_bytes());
     let h = hasher.finalize();
     let b = h.as_bytes();
     let n = u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as f64 / u32::MAX as f64;
     let noise = (n - 0.5) * 0.20;
 
-    (base * diurnal * (1.0 + noise)).clamp(0.0, 2.0)
-}
-
-fn city_base_load(owner: &str) -> f64 {
-    if owner == "overview" {
-        return 0.95;
-    }
-    for (slug, _, _, _, base) in CITIES {
-        if *slug == owner {
-            return *base;
-        }
-    }
-    0.80
+    (sub.base_load_pu * diurnal * (1.0 + noise)).clamp(0.0, 2.0)
 }
 
 // -----------------------------------------------------------------------------
@@ -343,15 +366,14 @@ async fn write_epoch(
     epoch_id: i64,
     sealed_at: DateTime<Utc>,
     parent_root: Option<[u8; 32]>,
-    cells: &[SeedCell],
-    substations: &HashMap<String, SigningKey>,
+    substations: &[Substation],
 ) -> Result<[u8; 32]> {
     // Canonical leaf order — matches how the server builds Merkle proofs.
-    let mut ordered: Vec<&SeedCell> = cells.iter().collect();
-    ordered.sort_by_key(|c| c.h3 as i64);
+    let mut ordered: Vec<&Substation> = substations.iter().collect();
+    ordered.sort_by_key(|s| s.h3 as i64);
 
     struct Row<'a> {
-        cell: &'a SeedCell,
+        sub: &'a Substation,
         payload: Value,
         identity_pk: [u8; 32],
         content_hash: [u8; 32],
@@ -361,30 +383,54 @@ async fn write_epoch(
     let mut rows: Vec<Row<'_>> = Vec::with_capacity(ordered.len());
     let mut content_hashes: Vec<[u8; 32]> = Vec::with_capacity(ordered.len());
 
-    for cell in &ordered {
-        let signing_key = substations
-            .get(&cell.owner)
-            .ok_or_else(|| anyhow::anyhow!("no substation for owner {}", cell.owner))?;
-        let identity_pk = signing_key.verifying_key().to_bytes();
+    for sub in &ordered {
+        let identity_pk = sub.signing_key.verifying_key().to_bytes();
 
-        let payload = json!({
-            "measurement":   "grid_load_pu",
-            "value":         cell_value(cell, epoch_id),
-            "unit":          "per_unit",
-            "quality":       "measured",
-            "epoch":         epoch_id,
-            "h3_resolution": cell.resolution,
-            "owner":         cell.owner,
-            "timestamp":     sealed_at.to_rfc3339(),
+        // Payload mirrors the OSM tags the demo will surface in the audit panel,
+        // plus the synthetic telemetry value.
+        let mut payload = json!({
+            "asset_class":    "substation",
+            "measurement":    "grid_load_pu",
+            "value":          cell_value(sub, epoch_id),
+            "unit":           "per_unit",
+            "quality":        "simulated_on_real_topology",
+            "epoch":          epoch_id,
+            "h3_resolution":  H3_RESOLUTION,
+            "timestamp":      sealed_at.to_rfc3339(),
+            "osm_id":         sub.osm_id,
+            "location": {
+                "lat": sub.lat,
+                "lon": sub.lon,
+            },
         });
+
+        // Conditionally add OSM operator/ref/voltage/name/type so the
+        // audit panel can show "operator: Terna S.p.A. · ref: XYZ · 380 kV"
+        if let Value::Object(ref mut map) = payload {
+            if let Some(op) = &sub.props.operator {
+                map.insert("operator".into(), Value::String(op.clone()));
+            }
+            if let Some(rf) = &sub.props.ref_ {
+                map.insert("ref".into(), Value::String(rf.clone()));
+            }
+            if let Some(v) = &sub.props.voltage {
+                map.insert("voltage".into(), Value::String(v.clone()));
+            }
+            if let Some(name) = &sub.props.name {
+                map.insert("name".into(), Value::String(name.clone()));
+            }
+            if let Some(st) = &sub.props.substation_type {
+                map.insert("substation_type".into(), Value::String(st.clone()));
+            }
+        }
 
         let canonical = render_core::tools::canonical_json(&payload)
             .map_err(|e| anyhow::anyhow!("canonical_json: {e}"))?;
         let content_hash: [u8; 32] = *blake3::hash(canonical.as_bytes()).as_bytes();
-        let signature: [u8; 64] = signing_key.sign(&content_hash).to_bytes();
+        let signature: [u8; 64] = sub.signing_key.sign(&content_hash).to_bytes();
 
         rows.push(Row {
-            cell,
+            sub,
             payload,
             identity_pk,
             content_hash,
@@ -412,7 +458,7 @@ async fn write_epoch(
     if epoch_exists {
         warn!(
             epoch_id,
-            "epoch already exists — skipping epoch insert; cell inserts will ON CONFLICT skip"
+            "epoch already exists — skipping epoch insert; cell inserts ON CONFLICT skip"
         );
     } else {
         sqlx::query(
@@ -438,7 +484,7 @@ async fn write_epoch(
         );
         qb.push_values(chunk, |mut b, row| {
             b.push_bind(tenant)
-                .push_bind(row.cell.h3 as i64)
+                .push_bind(row.sub.h3 as i64)
                 .push_bind(epoch_id)
                 .push_bind(row.identity_pk.to_vec())
                 .push_bind(&row.payload)
@@ -452,7 +498,6 @@ async fn write_epoch(
     }
 
     tx.commit().await?;
-
     info!(epoch_id, inserted, skipped, "cells written");
     Ok(merkle_root)
 }
@@ -470,7 +515,7 @@ async fn verify_tenant_exists(pool: &PgPool, tenant: &Uuid) -> Result<()> {
 }
 
 // -----------------------------------------------------------------------------
-// Merkle root
+// Merkle root (same as before)
 // -----------------------------------------------------------------------------
 
 fn merkle_root(leaves: &[[u8; 32]]) -> [u8; 32] {
