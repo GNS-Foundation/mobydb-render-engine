@@ -3,8 +3,8 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MobyDB Render Engine — Live Demo</title>
-    <meta name="description" content="H3-native spatiotemporal data with cryptographic audit trails. Live demo against Italian grid telemetry fixtures." />
+    <title>MobyDB Render Engine — Italian grid, live-signed</title>
+    <meta name="description" content="Real Italian power infrastructure (OpenStreetMap) served through MobyDB with per-substation Ed25519 signatures and merkle-chained epochs." />
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.min.css" />
     <link rel="stylesheet" href="./styles.css" />
@@ -13,13 +13,17 @@
 
 <header class="hdr">
     <div class="hdr-left">
-        <div class="logo-mark">M</div>
+        <div class="logo-mark" title="MobyDB Render Engine">M</div>
         <div class="hdr-title">
             <h1>MobyDB Render Engine</h1>
-            <p>Live demo · Italian grid telemetry · audit-verifiable cells</p>
+            <p>Italian grid · OSM topology · per-substation signed</p>
         </div>
     </div>
     <div class="hdr-right">
+        <span class="pill pill-zoom" title="current map zoom level">
+            <span class="pill-label">zoom</span>
+            <span id="zoom-readout" class="zoom-low">—</span>
+        </span>
         <span class="pill pill-live" id="server-status">
             <span class="dot dot-green"></span>
             <span id="server-status-text">connecting…</span>
@@ -43,7 +47,18 @@
         </div>
 
         <div class="legend">
-            <span class="legend-label">grid load</span>
+            <span class="legend-label">lines</span>
+            <div class="legend-lines">
+                <span class="ll-swatch ll-380"></span><span class="ll-text">380 kV</span>
+                <span class="ll-swatch ll-220"></span><span class="ll-text">220</span>
+                <span class="ll-swatch ll-150"></span><span class="ll-text">150</span>
+                <span class="ll-swatch ll-132"></span><span class="ll-text">132</span>
+                <span class="ll-swatch ll-60"></span><span class="ll-text">&lt; 132</span>
+            </div>
+        </div>
+
+        <div class="legend">
+            <span class="legend-label">load</span>
             <div class="legend-ramp"></div>
             <div class="legend-scale">
                 <span>0.6 pu</span>
@@ -55,8 +70,8 @@
 
     <aside id="audit" class="audit audit-empty">
         <div class="audit-empty-msg">
-            click any cell to load its audit bundle<br>
-            <small>every cell is Ed25519-signed and sealed into a Merkle-chained epoch</small>
+            click any substation to load its audit bundle<br>
+            <small>every cell is Ed25519-signed and sealed into a merkle-chained epoch · zoom in past 14 to see cells</small>
         </div>
     </aside>
 
@@ -79,16 +94,17 @@
         <div class="cost-compare">
             <div class="cost-proof-line"><strong id="cc-sigs">0</strong> ed25519 signatures</div>
             <div class="cost-proof-line"><strong id="cc-proofs">0</strong> merkle inclusion proofs</div>
-            <div class="cost-proof-line"><strong id="cc-epochs">0</strong> epoch roots · chained to genesis</div>
+            <div class="cost-proof-line"><strong id="cc-epochs">0</strong> epoch roots · chained</div>
+            <div class="cost-proof-line cost-sub"><strong id="cc-lines">—</strong> OSM transmission segments</div>
             <div class="cost-note">no equivalent in any tile server</div>
         </div>
     </div>
 
 </main>
 
+<script src="./config.js" onerror="console.warn('demo/config.js not found — demo key must be set another way')"></script>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/h3-js@4.1.0/dist/h3-js.umd.js"></script>
-<script src="./config.js"></script>
 <script type="module" src="./app.js"></script>
 
 </body>

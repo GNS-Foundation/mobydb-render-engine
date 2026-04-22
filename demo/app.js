@@ -1,11 +1,35 @@
+// =============================================================================
+// demo/app.js — MobyDB Render Engine · live demo (Session 2)
+// =============================================================================
+// Renders a map of real Italian power infrastructure (Lazio + Lombardia)
+// sourced from OpenStreetMap, with per-substation H3 res-11 cells fetched
+// live from the MobyDB MCP endpoint, signed per-cell with Ed25519 and sealed
+// into merkle-chained epochs.
+//
+// Zoom model:
+//   zoom <= 11   transmission lines only (380/220/132/…kV polylines)
+//   zoom >= 12   transmission lines + MCP cells (res 11, ~5×7 km viewport)
+//
+// The server enforces a 65,536-cell viewport cap. At zoom 12+ over Rome's
+// latitude, a full viewport polyfill at res 11 stays comfortably under.
+// =============================================================================
+
 import { verifyProvenance } from "./verify.js";
 
 const CONFIG = {
     render_url: window.MOBYDB_RENDER_URL
         || "https://mobydb-render-engine-production.up.railway.app",
-    api_key:    window.MOBYDB_DEMO_KEY
-        || "",
+    api_key:    window.MOBYDB_DEMO_KEY || "",
+    // Client-side safety guard. Server hard cap is 65,536 regardless.
     max_cells_per_fetch: 65536,
+    // Zoom at which res-11 cell queries become viable. Empirical: at a
+    // typical ~1700×900 viewport, zoom 12 still polyfills to ~180k candidates
+    // (over the 65k server cap). Zoom 14 fits comfortably.
+    cell_min_zoom: 14,
+    // Path to static transmission line GeoJSON. The demo serves from demo/
+    // (python3 -m http.server 8000 inside demo/), which can't reach ../fixtures.
+    // setup_dev.sh creates a symlink: demo/fixtures -> ../fixtures
+    transmission_lines_url: "./fixtures/osm/transmission_lines.geojson",
 };
 
 const EPOCH_DATES = [
@@ -27,6 +51,48 @@ const state = {
 };
 
 const $ = id => document.getElementById(id);
+
+// -----------------------------------------------------------------------------
+// Operator normalization
+// -----------------------------------------------------------------------------
+// OSM tags operator names with wildly inconsistent casing: "Acea Distribuzione",
+// "ACEA", "acea", "Areti", "Acea SpA" all refer to the same Rome DSO group.
+// This map collapses variants into canonical display names.
+
+const OPERATOR_ALIASES = [
+    { pattern: /^(acea|areti)/i,           canonical: "Acea Distribuzione",  group: "acea" },
+    { pattern: /^(e[-‐]?distribuzione|enel\s+distribuzione|enel\s+produzione|enel)\b/i,
+                                           canonical: "Enel Distribuzione",  group: "enel" },
+    { pattern: /^enel\s*$/i,               canonical: "Enel",                group: "enel" },
+    { pattern: /^terna/i,                  canonical: "Terna S.p.A.",        group: "terna" },
+    { pattern: /^unareti/i,                canonical: "Unareti S.p.A.",      group: "unareti" },
+    { pattern: /^rete\s+ferroviaria|^rfi\b/i,
+                                           canonical: "Rete Ferroviaria Italiana", group: "rfi" },
+    { pattern: /^a2a/i,                    canonical: "A2A",                 group: "a2a" },
+    { pattern: /^fs\s*$/i,                 canonical: "Ferrovie dello Stato", group: "rfi" },
+    { pattern: /^italgen/i,                canonical: "Italgen",             group: "italgen" },
+];
+
+function normalizeOperator(raw) {
+    if (!raw) return { display: "Unspecified operator", group: "unknown" };
+    const trimmed = String(raw).trim();
+    for (const { pattern, canonical, group } of OPERATOR_ALIASES) {
+        if (pattern.test(trimmed)) return { display: canonical, group };
+    }
+    return { display: trimmed, group: "other" };
+}
+
+// -----------------------------------------------------------------------------
+// Voltage helpers
+// -----------------------------------------------------------------------------
+
+// "380000" → 380 ; "132000;220000" → 220 (take max) ; null → null
+function voltageToKv(raw) {
+    if (!raw) return null;
+    const parts = String(raw).split(";").map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n));
+    if (parts.length === 0) return null;
+    return Math.round(Math.max(...parts) / 1000);
+}
 
 // -----------------------------------------------------------------------------
 // MCP client
@@ -73,8 +139,7 @@ async function mcpCall(name, args, signal) {
 async function healthCheck() {
     try {
         const resp = await fetch(`${CONFIG.render_url}/health`);
-        const body = await resp.json();
-        return body;
+        return await resp.json();
     } catch (e) {
         return null;
     }
@@ -93,30 +158,64 @@ const map = new maplibregl.Map({
                 type: "raster",
                 tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
                 tileSize: 256,
-                attribution: "© OpenStreetMap contributors",
+                attribution: "© OpenStreetMap contributors · ODbL",
             },
         },
         layers: [
-            { id: "osm", type: "raster", source: "osm", paint: { "raster-opacity": 0.85 } },
+            { id: "osm", type: "raster", source: "osm", paint: { "raster-opacity": 0.80 } },
         ],
         glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
     },
-    center: [12.5, 42.0],
-    zoom: 7.5,
-    minZoom: 7,
-    maxZoom: 11,
+    // Rome center at zoom 14 → cells visible on page load; sits under the
+    // empirical cell_min_zoom threshold comfortably.
+    center: [12.48, 41.90],
+    zoom: 14,
+    minZoom: 8,     // Below 8, Lazio+Lombardia frame is too small to be useful.
+    maxZoom: 16,    // Past 16, OSM raster starts looking blurry.
 });
 
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
 map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
 
 map.on("load", () => {
+    // --- transmission lines source + layer (static, always visible) ---
+    map.addSource("tx-lines", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+        generateId: true,
+    });
+
+    // Voltage-colored polylines. 'voltage_kv' is normalized from payload before
+    // injection (see loadTransmissionLines()). Missing voltage → neutral gray.
+    map.addLayer({
+        id: "tx-lines-layer",
+        type: "line",
+        source: "tx-lines",
+        paint: {
+            // Color and width are set per-feature in loadTransmissionLines().
+            // Using [get] on pre-computed properties avoids MapLibre expression
+            // pitfalls with mixed-type / missing fields.
+            "line-color": ["get", "color"],
+            "line-width": [
+                "interpolate", ["linear"], ["zoom"],
+                8,  ["get", "width_z8"],
+                14, ["get", "width_z14"],
+            ],
+            "line-opacity": [
+                "interpolate", ["linear"], ["zoom"],
+                8, 0.55,
+                12, 0.75,
+                15, 0.85,
+            ],
+        },
+    });
+
+    // --- cells source (only populated at zoom >= cell_min_zoom) ---
     map.addSource("cells", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
     });
 
-    // Fill layer — teal→red on load property
     map.addLayer({
         id: "cells-fill",
         type: "fill",
@@ -132,12 +231,11 @@ map.on("load", () => {
             ],
             "fill-opacity": [
                 "case", ["boolean", ["feature-state", "selected"], false],
-                0.9, 0.32,
+                0.90, 0.55,
             ],
         },
     });
 
-    // Stroke layer — nearly invisible by default; pops on selection
     map.addLayer({
         id: "cells-stroke",
         type: "line",
@@ -145,11 +243,11 @@ map.on("load", () => {
         paint: {
             "line-color": [
                 "case", ["boolean", ["feature-state", "selected"], false],
-                "#4ade80", "rgba(255, 255, 255, 0.06)",
+                "#4ade80", "rgba(255, 255, 255, 0.15)",
             ],
             "line-width": [
                 "case", ["boolean", ["feature-state", "selected"], false],
-                2.5, 0.3,
+                2.5, 0.5,
             ],
         },
     });
@@ -159,62 +257,99 @@ map.on("load", () => {
     map.on("mouseleave", "cells-fill", () => map.getCanvas().style.cursor = "");
 
     map.on("moveend", debounce(refreshCells, 400));
+    map.on("zoomend", updateZoomReadout);
 
+    loadTransmissionLines();
     refreshCells();
+    updateZoomReadout();
     healthCheck().then(updateServerStatus);
 });
 
 // -----------------------------------------------------------------------------
-// Cell fetching
+// Transmission line loading
 // -----------------------------------------------------------------------------
 
-function zoomToResolution(z) {
-    // Zoom tuned so the viewport bbox produces < 4000 candidate cells at
-    // the chosen resolution (server cap), and matches what we seed:
-    //   zoom 6-8:  res 6   (overview hexagons cover Italy)
-    //   zoom 9-11: res 9   (city-level detail)
-    //
-    // Below zoom 6 we'd exceed the server cap even at res 6; the map
-    // minZoom is set to 6 to prevent this.
-    if (z < 9) return 6;
-    return 9;
+async function loadTransmissionLines() {
+    try {
+        const resp = await fetch(CONFIG.transmission_lines_url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const raw = await resp.json();
+
+        // Pre-compute color and line widths per feature. MapLibre expressions
+        // with conditional null-handling are fragile; pre-computing at ingest
+        // time is simpler and more portable.
+        const features = raw.features.map(f => {
+            const p = f.properties || {};
+            const kv = typeof p.voltage_kv === "number" ? p.voltage_kv : 0;
+
+            let color, w8, w14;
+            if (kv >= 380)      { color = "#d83232"; w8 = 1.8; w14 = 4.5; }
+            else if (kv >= 220) { color = "#e06b2a"; w8 = 1.3; w14 = 3.2; }
+            else if (kv >= 150) { color = "#f0a02d"; w8 = 0.9; w14 = 2.2; }
+            else if (kv >= 132) { color = "#e5c246"; w8 = 0.9; w14 = 2.2; }
+            else if (kv >= 60)  { color = "#7a8997"; w8 = 0.6; w14 = 1.6; }
+            else                { color = "#5a6775"; w8 = 0.4; w14 = 1.2; }
+
+            return {
+                type: "Feature",
+                geometry: f.geometry,
+                properties: {
+                    ...p,
+                    color,
+                    width_z8:  w8,
+                    width_z14: w14,
+                },
+            };
+        });
+
+        map.getSource("tx-lines").setData({
+            type: "FeatureCollection",
+            features,
+        });
+
+        $("cc-lines").textContent = features.length.toLocaleString();
+    } catch (e) {
+        console.warn("transmission lines failed to load:", e);
+        $("cc-lines").textContent = "—";
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Cell fetching (MCP)
+// -----------------------------------------------------------------------------
+
+function shouldQueryCells(zoom) {
+    // Strictly >= threshold. At zoom 13.9 the viewport still polyfills to ~70k
+    // candidates at res 11 (over the 65k server cap), so we gate at >= 14.0
+    // rather than > 13.
+    return zoom >= CONFIG.cell_min_zoom;
 }
 
 async function refreshCells() {
-    const bounds = map.getBounds();
-    const zoom   = map.getZoom();
-    const res    = zoomToResolution(zoom);
+    const zoom = map.getZoom();
 
-    // Estimate bbox cell count client-side before hitting the server.
-    // Constants calibrated from actual server-reported cell counts (not from
-    // h3 area math which undercounts cell perimeter overlap).
-    // At res 6 the polyfill of a 10°×5° bbox returns ~150,000 cells → ~3000/deg².
-    // At res 9 a 1°×0.5° bbox returns ~6000 cells → ~12000/deg².
-    const dLat = bounds.getNorth() - bounds.getSouth();
-    const dLng = bounds.getEast()  - bounds.getWest();
-    const areaDeg2 = Math.abs(dLat * dLng);
-    const cellsPerDeg2 = res === 6 ? 3000 : res === 9 ? 12000 : 1000;
-    const estimatedCount = Math.ceil(areaDeg2 * cellsPerDeg2);
-
-    if (estimatedCount > CONFIG.max_cells_per_fetch) {
-        // Too big — clear the overlay and show a hint instead of a failed request.
+    if (!shouldQueryCells(zoom)) {
+        // At low zoom we only show lines. Clear any existing cells from the
+        // previous high-zoom view.
         map.getSource("cells")?.setData({ type: "FeatureCollection", features: [] });
-        showHint(`viewport too large at res ${res} — zoom in (estimated ${estimatedCount.toLocaleString()} cells)`);
+        showHint(`zoom in to ${CONFIG.cell_min_zoom}+ to load signed substation cells · transmission lines shown at all zooms`);
         return;
     }
     hideHint();
+
+    const bounds = map.getBounds();
 
     if (lastFetchAbort) lastFetchAbort.abort();
     const ctrl = new AbortController();
     lastFetchAbort = ctrl;
 
     try {
-        const { inner, server_ms } = await mcpCall("query_cells_in_region", {
+        const { inner } = await mcpCall("query_cells_in_region", {
             viewport: {
                 mode: "bounding_box",
                 south_west: { lat: bounds.getSouth(), lng: bounds.getWest() },
                 north_east: { lat: bounds.getNorth(), lng: bounds.getEast() },
-                resolution: res,
+                resolution: 11,
             },
             limit: CONFIG.max_cells_per_fetch,
             epoch_id: currentEpoch,
@@ -234,7 +369,7 @@ async function refreshCells() {
                     h3_cell: c.h3_cell,
                     epoch_id: c.epoch_id,
                     load: payload.value ?? 0.5,
-                    owner: payload.owner ?? "unknown",
+                    operator: payload.operator || "",
                 },
             };
         });
@@ -248,10 +383,15 @@ async function refreshCells() {
     } catch (e) {
         if (e.name === "AbortError") return;
         console.error("refreshCells failed:", e);
-        // Clear stale cells so the user doesn't see phantom data
         map.getSource("cells")?.setData({ type: "FeatureCollection", features: [] });
-        showHint(`server: ${e.message.slice(0, 80)}`);
-        updateServerStatus(null, e.message);
+        // If the server rejected the viewport, tell user why in plain language.
+        // This is NOT a server error — don't downgrade the status pill.
+        if (e.message.includes("viewport exceeds max cells")) {
+            showHint("viewport too large — zoom in further to load signed cells");
+        } else {
+            showHint(`server: ${e.message.slice(0, 80)}`);
+            updateServerStatus(null, e.message);
+        }
     }
 }
 
@@ -311,8 +451,11 @@ function renderAuditError(h3hex, msg) {
 function renderAuditPanel(p) {
     const cs = p.cell_state;
     const payload = typeof cs.payload === "string" ? JSON.parse(cs.payload) : cs.payload;
-    const owner = payload.owner || "unknown";
-    const load  = (payload.value ?? 0).toFixed(4);
+
+    const op = normalizeOperator(payload.operator);
+    const load = (payload.value ?? 0).toFixed(4);
+    const kv = voltageToKv(payload.voltage);
+
     const writerShort = cs.identity_pk.slice(0, 16) + "…";
     const hashShort   = cs.content_hash.slice(0, 16) + "…";
     const sigShort    = cs.signature.slice(0, 16) + "…";
@@ -323,15 +466,35 @@ function renderAuditPanel(p) {
         `<div><span class="idx">${i}</span>${h.slice(0, 32)}…</div>`
     ).join("");
 
+    // --- Asset section (new — surfaces real OSM tags) ---
+    const assetRows = [];
+    assetRows.push(`<div class="audit-row"><span class="audit-label">operator</span><span class="audit-val normal op-${op.group}">${op.display}</span></div>`);
+    if (payload.name) {
+        assetRows.push(`<div class="audit-row"><span class="audit-label">name</span><span class="audit-val normal">${escapeHtml(payload.name)}</span></div>`);
+    }
+    if (payload.ref) {
+        assetRows.push(`<div class="audit-row"><span class="audit-label">ref</span><span class="audit-val normal">${escapeHtml(payload.ref)}</span></div>`);
+    }
+    if (kv !== null) {
+        assetRows.push(`<div class="audit-row"><span class="audit-label">voltage</span><span class="audit-val normal">${kv} kV</span></div>`);
+    }
+    if (payload.substation_type) {
+        assetRows.push(`<div class="audit-row"><span class="audit-label">type</span><span class="audit-val normal">${escapeHtml(payload.substation_type)}</span></div>`);
+    }
+    if (payload.osm_id) {
+        const [type, id] = payload.osm_id.split("/");
+        const osmUrl = `https://www.openstreetmap.org/${type}/${id}`;
+        assetRows.push(`<div class="audit-row"><span class="audit-label">osm id</span><span class="audit-val normal"><a class="osm-link" href="${osmUrl}" target="_blank" rel="noopener">${payload.osm_id} ↗</a></span></div>`);
+    }
+
     $("audit").classList.remove("audit-empty");
     $("audit").innerHTML = `
         <h2>audit bundle <span class="h3hex">${cs.h3_cell}</span></h2>
 
         <div class="audit-section">
-            <div class="audit-row"><span class="audit-label">city</span><span class="audit-val normal">${owner}</span></div>
+            ${assetRows.join("")}
             <div class="audit-row"><span class="audit-label">epoch</span><span class="audit-val normal">${cs.epoch_id} · ${EPOCH_DATES[cs.epoch_id] || ""}</span></div>
-            <div class="audit-row"><span class="audit-label">grid load</span><span class="audit-val normal">${load} per unit</span></div>
-            <div class="audit-row"><span class="audit-label">measurement</span><span class="audit-val normal">${payload.measurement || "—"}</span></div>
+            <div class="audit-row"><span class="audit-label">measurement</span><span class="audit-val normal">${payload.measurement || "grid_load_pu"} = ${load}</span></div>
         </div>
 
         <hr class="hrule">
@@ -394,6 +557,12 @@ async function doVerify(p) {
     btn.disabled = false; btn.textContent = "verify again";
 }
 
+function escapeHtml(s) {
+    return String(s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 // -----------------------------------------------------------------------------
 // Epoch slider
 // -----------------------------------------------------------------------------
@@ -410,7 +579,7 @@ $("epoch-num").textContent = currentEpoch;
 $("epoch-date").textContent = EPOCH_DATES[currentEpoch];
 
 // -----------------------------------------------------------------------------
-// Cost counter
+// Cost counter + zoom readout
 // -----------------------------------------------------------------------------
 
 function updateCostCounter() {
@@ -418,19 +587,26 @@ function updateCostCounter() {
     $("cc-kb").textContent = (state.bytes_received / 1024).toFixed(1);
     $("cc-srv").textContent = state.server_ms_sum.toFixed(0);
 
-    // Every returned cell carries its own ed25519 signature — one per cell.
-    // Every cell on the map could yield a merkle proof on demand (the proof
-    // travels with the provenance bundle, not the viewport response; we count
-    // it as "proof-addressable" rather than "proof-attached").
-    $("cc-sigs").textContent = state.cells_fetched.toLocaleString();
+    // Every returned cell carries its own ed25519 signature. Every cell is
+    // merkle-provable on demand via get_provenance.
+    $("cc-sigs").textContent   = state.cells_fetched.toLocaleString();
     $("cc-proofs").textContent = state.cells_fetched.toLocaleString();
     $("cc-epochs").textContent = state.epochs_touched.size.toLocaleString();
 }
 
-function estimateTilesInViewport(_bounds, _zoom) {
-    // kept as a stub for future use; previously used for the tile-pyramid
-    // comparison that was removed because it's an apples-to-oranges framing.
-    return 0;
+function updateZoomReadout() {
+    const z = map.getZoom();
+    const el = $("zoom-readout");
+    if (!el) return;
+    el.textContent = z.toFixed(1);
+    // Subtle signal about mode
+    if (z >= CONFIG.cell_min_zoom) {
+        el.classList.remove("zoom-low");
+        el.classList.add("zoom-high");
+    } else {
+        el.classList.remove("zoom-high");
+        el.classList.add("zoom-low");
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -469,7 +645,7 @@ function debounce(fn, ms) {
 }
 
 // -----------------------------------------------------------------------------
-// Map-overlay hint (shown when viewport is too big or on transient errors)
+// Map-overlay hint (shown when zoom too low, or on transient errors)
 // -----------------------------------------------------------------------------
 
 let hintEl = null;
@@ -485,7 +661,7 @@ function ensureHintEl() {
         border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;
         padding: 8px 14px; font-size: 11px; color: #c6ced9;
         font-variant-numeric: tabular-nums;
-        transition: opacity 200ms ease;
+        max-width: min(520px, calc(100vw - 40px)); text-align: center;
     `;
     document.getElementById("map").appendChild(hintEl);
     return hintEl;
@@ -494,7 +670,6 @@ function ensureHintEl() {
 function showHint(msg) {
     const el = ensureHintEl();
     el.textContent = msg;
-    el.style.opacity = "1";
     el.style.display = "block";
 }
 function hideHint() {

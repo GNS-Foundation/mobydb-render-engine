@@ -42,5 +42,10 @@ Thumbs.db
 # MobyDB render engine specific
 /render-cache/
 /snapshots/
+
+# Demo app — local-only files
+# demo/config.js holds the demo API key (inject via window.MOBYDB_DEMO_KEY)
+# demo/fixtures is a symlink created by demo/setup_dev.sh so the demo can
+# reach ../fixtures/ through python3 -m http.server (which doesn't follow ..)
 demo/config.js
-demo/*.bak
+demo/fixtures
