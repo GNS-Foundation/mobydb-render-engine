@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="it">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>MobyDB · The spatial database that plugs into what you already run</title>
-<meta name="description" content="MobyDB is a jurisdiction-aware spatial database that plugs into the systems you already run. SCADA, MCP agents, PostGIS migrations, Stellar settlement." />
+<title>MobyDB · Il database spaziale che si integra con i sistemi che già usate</title>
+<meta name="description" content="MobyDB è un database spaziale consapevole della giurisdizione che si integra con i sistemi che già utilizzate. SCADA, agenti MCP, migrazioni PostGIS, regolamento di conto su Stellar." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@300;400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
@@ -139,10 +139,10 @@
     margin: 0;
     font-family: var(--serif);
     font-weight: 400;
-    font-size: clamp(40px, 6vw, 74px);
-    line-height: 1.02;
+    font-size: clamp(36px, 5.5vw, 66px);
+    line-height: 1.04;
     letter-spacing: -0.02em;
-    max-width: 14ch;
+    max-width: 16ch;
   }
   .hero h1 em {
     font-family: var(--serif);
@@ -151,7 +151,7 @@
   }
   .hero .lede {
     margin-top: 28px;
-    max-width: 60ch;
+    max-width: 62ch;
     font-size: 17px;
     line-height: 1.6;
     color: var(--ink-mute);
@@ -243,15 +243,15 @@
   .sec-title {
     font-family: var(--serif);
     font-weight: 400;
-    font-size: clamp(28px, 4vw, 42px);
-    line-height: 1.08;
+    font-size: clamp(26px, 3.8vw, 40px);
+    line-height: 1.1;
     letter-spacing: -0.015em;
     margin: 0 0 18px;
-    max-width: 24ch;
+    max-width: 28ch;
   }
   .sec-lede {
     color: var(--ink-mute);
-    max-width: 62ch;
+    max-width: 64ch;
     font-size: 16px;
     line-height: 1.65;
     margin: 0 0 40px;
@@ -317,16 +317,6 @@
     white-space: nowrap;
   }
   .layer[data-focus="true"] .role { color: var(--teal-2); }
-
-  .stack-viz .bracket {
-    position: absolute;
-    right: -48px;
-    width: 36px;
-    border-top: 1px solid var(--border-2);
-    border-right: 1px solid var(--border-2);
-    border-bottom: 1px solid var(--border-2);
-  }
-  @media (max-width: 900px) { .stack-viz .bracket { display: none; } }
 
   .stack-prose p {
     font-size: 15px;
@@ -423,7 +413,7 @@
   .pipe .sub {
     color: var(--ink-mute);
     margin: 0 0 34px;
-    max-width: 60ch;
+    max-width: 64ch;
   }
   .pipe .flow {
     display: grid;
@@ -516,15 +506,15 @@
   .cta-band h2 {
     font-family: var(--serif);
     font-weight: 400;
-    font-size: clamp(32px, 4.5vw, 48px);
+    font-size: clamp(28px, 4vw, 44px);
     margin: 0 auto 18px;
-    max-width: 18ch;
+    max-width: 22ch;
     letter-spacing: -0.015em;
-    line-height: 1.05;
+    line-height: 1.08;
   }
   .cta-band p {
     color: var(--ink-mute);
-    max-width: 52ch;
+    max-width: 56ch;
     margin: 0 auto 32px;
     font-size: 16px;
   }
@@ -574,21 +564,21 @@
 
 <nav class="nav">
   <div class="wrap row">
-    <a class="brand" href="/" aria-label="MobyDB">
+    <a class="brand" href="/index.it.html" aria-label="MobyDB">
       <span class="mark">MobyDB</span>
-      <span class="tag">Integration</span>
+      <span class="tag">Integrazione</span>
     </a>
     <div class="nav-links">
       <a href="#stack">Stack</a>
-      <a href="#patterns">Patterns</a>
-      <a href="#compliance">Compliance</a>
-      <a href="#matrix">Matrix</a>
+      <a href="#patterns">Pattern</a>
+      <a href="#compliance">Conformità</a>
+      <a href="#matrix">Matrice</a>
       <span class="lang-switch">
-        <a class="active" href="/">EN</a>
+        <a href="/">EN</a>
         <span class="sep">·</span>
-        <a href="/index.it.html">IT</a>
+        <a class="active" href="/index.it.html">IT</a>
       </span>
-      <a class="nav-cta" href="/map.html">Live demo →</a>
+      <a class="nav-cta" href="/map.html">Demo live →</a>
     </div>
   </div>
 </nav>
@@ -598,39 +588,39 @@
 <!-- ================================================================== -->
 <header class="hero">
   <div class="wrap">
-    <div class="eyebrow r r-1"><span class="dot"></span>MOBYDB · INTEGRATION GUIDE</div>
-    <h1 class="r r-2">The spatial database that <em>plugs into</em><br/>what you already run.</h1>
+    <div class="eyebrow r r-1"><span class="dot"></span>MOBYDB · GUIDA ALL'INTEGRAZIONE</div>
+    <h1 class="r r-2">Il database spaziale che <em>si integra</em><br/>con i sistemi che già usate.</h1>
     <p class="lede r r-3">
-      MobyDB sits beside your SCADA, your MCP agents, your PostGIS warehouse &mdash;
-      not in front of them. Its composite primary key (<span class="mono">H3 · epoch · Ed25519</span>)
-      means every query returns a cryptographically verifiable, jurisdiction‑aware answer.
-      Nothing about your existing pipeline has to move.
+      MobyDB si affianca al vostro SCADA, ai vostri agenti MCP, al vostro data warehouse PostGIS &mdash;
+      non li sostituisce. La sua chiave primaria composita (<span class="mono">H3 · epoch · Ed25519</span>)
+      garantisce che ogni query restituisca una risposta crittograficamente verificabile
+      e consapevole della giurisdizione. Nessun cambiamento alla pipeline esistente.
     </p>
     <div class="cta r r-4">
       <a class="btn primary" href="/map.html">
-        Open the live demo <span class="arrow">→</span>
+        Apri la demo live <span class="arrow">→</span>
       </a>
-      <a class="btn" href="mailto:camilo@ulissy.app?subject=MobyDB%20integration%20walkthrough">
-        Book a walkthrough <span class="arrow">→</span>
+      <a class="btn" href="mailto:camilo@ulissy.app?subject=MobyDB%20-%20Richiesta%20demo%20tecnica">
+        Prenota una demo <span class="arrow">→</span>
       </a>
     </div>
 
-    <div class="mini r r-4" role="group" aria-label="Headline metrics">
+    <div class="mini r r-4" role="group" aria-label="Metriche principali">
       <div class="c">
-        <div class="k">Point lookup</div>
-        <div class="v tabular">0.24<span class="u">ms</span></div>
+        <div class="k">Lookup puntuale</div>
+        <div class="v tabular">0,24<span class="u">ms</span></div>
       </div>
       <div class="c">
         <div class="k">vs PostGIS</div>
-        <div class="v tabular">35×<span class="u">faster</span></div>
+        <div class="v tabular">35×<span class="u">più veloce</span></div>
       </div>
       <div class="c">
-        <div class="k">Proof per record</div>
+        <div class="k">Prova per record</div>
         <div class="v tabular">Merkle<span class="u"> / Blake3</span></div>
       </div>
       <div class="c">
-        <div class="k">Addressable cells</div>
-        <div class="v tabular">569T<span class="u"> H3 res‑15</span></div>
+        <div class="k">Celle indirizzabili</div>
+        <div class="v tabular">569T<span class="u"> H3 ris.‑15</span></div>
       </div>
     </div>
   </div>
@@ -641,77 +631,79 @@
 <!-- ================================================================== -->
 <section class="section" id="stack">
   <div class="wrap">
-    <div class="sec-eyebrow"><span class="n">01</span>WHERE IT SITS</div>
-    <h2 class="sec-title">MobyDB is the storage layer of the GNS stack.</h2>
+    <div class="sec-eyebrow"><span class="n">01</span>DOVE SI COLLOCA</div>
+    <h2 class="sec-title">MobyDB è il livello di archiviazione dello stack GNS.</h2>
     <p class="sec-lede">
-      Six layers, one composite key. Every row is addressed by
-      <span class="mono">where</span>,
-      <span class="mono">when</span>, and
-      <span class="mono">who</span> — so every answer comes with a proof that it
-      came from an authorized writer, inside a known jurisdiction, within a
-      known moment.
+      Sei livelli, una chiave composita. Ogni riga è indirizzata da
+      <span class="mono">dove</span>,
+      <span class="mono">quando</span> e
+      <span class="mono">chi</span> &mdash; cosicché ogni risposta è accompagnata
+      dalla prova che proviene da uno scrittore autorizzato, all'interno di una
+      giurisdizione nota, in un momento noto.
     </p>
 
     <div class="stack">
-      <div class="stack-viz" aria-label="GNS stack">
+      <div class="stack-viz" aria-label="Stack GNS">
         <div class="layer"><div class="lv">L6</div>
-          <div><h4>GCRUMBS · Enterprise apps</h4><p>Operators, auditors, AI agents — whoever needs the answer.</p></div>
-          <div class="role">CLIENTS</div>
+          <div><h4>GCRUMBS · Applicazioni enterprise</h4><p>Operatori, revisori, agenti IA — chiunque abbia bisogno della risposta.</p></div>
+          <div class="role">CLIENT</div>
         </div>
         <div class="layer"><div class="lv">L5</div>
-          <div><h4>GEIANT Hive</h4><p>Distributed inference &amp; tile rendering on identity‑verified workers.</p></div>
-          <div class="role">COMPUTE</div>
+          <div><h4>GEIANT Hive</h4><p>Inferenza distribuita e rendering di tile su worker con identità verificata.</p></div>
+          <div class="role">CALCOLO</div>
         </div>
         <div class="layer"><div class="lv">L4</div>
-          <div><h4>GNS‑AIP</h4><p>Agent delegation chains, proof‑of‑jurisdiction, territorial scoping.</p></div>
-          <div class="role">AGENTS</div>
+          <div><h4>GNS‑AIP</h4><p>Catene di delega per agenti, proof‑of‑jurisdiction, ambito territoriale.</p></div>
+          <div class="role">AGENTI</div>
         </div>
         <div class="layer" data-focus="true"><div class="lv">L3</div>
-          <div><h4>MobyDB</h4><p>Storage. <b style="color:var(--ink)">Composite key: (H3, epoch, Ed25519).</b> Signed writes, Merkle epochs, MobyQL.</p></div>
-          <div class="role">STORAGE</div>
+          <div><h4>MobyDB</h4><p>Archiviazione. <b style="color:var(--ink)">Chiave composita: (H3, epoch, Ed25519).</b> Scritture firmate, epoch Merkle, MobyQL.</p></div>
+          <div class="role">ARCHIVIAZIONE</div>
         </div>
         <div class="layer"><div class="lv">L2</div>
-          <div><h4>GNS Protocol</h4><p>Ed25519 identity, @handles, Proof‑of‑Trajectory breadcrumbs.</p></div>
-          <div class="role">IDENTITY</div>
+          <div><h4>Protocollo GNS</h4><p>Identità Ed25519, @handle, breadcrumb Proof‑of‑Trajectory.</p></div>
+          <div class="role">IDENTITÀ</div>
         </div>
         <div class="layer"><div class="lv">L1</div>
-          <div><h4>GeoEpoch Protocol (GEP)</h4><p>Time partitioned across a geographic address space.</p></div>
-          <div class="role">TIME</div>
+          <div><h4>GeoEpoch Protocol (GEP)</h4><p>Tempo partizionato su uno spazio di indirizzi geografici.</p></div>
+          <div class="role">TEMPO</div>
         </div>
         <div class="layer"><div class="lv">L0</div>
-          <div><h4>H3 Grid</h4><p>Uber's hexagonal hierarchical index — the geography.</p></div>
-          <div class="role">GEOGRAPHY</div>
+          <div><h4>Griglia H3</h4><p>L'indice gerarchico esagonale di Uber — la geografia.</p></div>
+          <div class="role">GEOGRAFIA</div>
         </div>
       </div>
 
       <div class="stack-prose">
         <p>
-          <b>MobyDB doesn't replace your systems.</b> It's the verifiable record
-          underneath them. A SCADA historian still ingests sensor telemetry.
-          A PostGIS warehouse still runs your analyst dashboards. MobyDB holds
-          the <i>signed, jurisdictionally‑scoped version of truth</i> that auditors
-          and regulators ask for.
+          <b>MobyDB non sostituisce i vostri sistemi.</b> È il registro verificabile
+          che sta sotto di essi. Uno storico SCADA continua a ingerire telemetria
+          dai sensori. Un data warehouse PostGIS continua a far funzionare le
+          dashboard degli analisti. MobyDB custodisce la <i>versione della verità
+          firmata e delimitata per giurisdizione</i> che revisori e regolatori
+          richiedono.
         </p>
 
         <div class="pull">
-          “Geography is not a column. Time is not a timestamp. Identity is not
-          a row.” They are the address of every record.
+          «La geografia non è una colonna. Il tempo non è un timestamp. L'identità
+          non è una riga.» Sono l'indirizzo di ogni record.
         </div>
 
         <p>
-          The stack below MobyDB (<b>GEP</b>, <b>GNS</b>) gives it primitives
-          nothing else has: every cell on Earth has an address; every address
-          has an epoch chain; every writer has a cryptographic identity. The
-          stack above (<b>GNS‑AIP</b>, <b>Hive</b>) makes MobyDB queryable by
-          AI agents that carry proof of <i>who authorized them</i> and
-          <i>where they're allowed to act</i>.
+          Lo stack sottostante MobyDB (<b>GEP</b>, <b>GNS</b>) gli fornisce
+          primitive che nessun altro sistema possiede: ogni cella della Terra
+          ha un indirizzo; ogni indirizzo ha una catena di epoch; ogni scrittore
+          ha un'identità crittografica. Lo stack superiore (<b>GNS‑AIP</b>,
+          <b>Hive</b>) rende MobyDB interrogabile da agenti IA che portano con sé
+          la prova di <i>chi li ha autorizzati</i> e <i>dove possono operare</i>.
         </p>
 
         <p>
-          In operational terms: you write a sensor reading once, and the same
-          record serves real‑time control, long‑term analytics, and the
-          <b>Art. 12 AI Act</b> audit trail — without a separate compliance
-          pipeline ever needing to exist.
+          In termini operativi: scrivete una lettura di un sensore una sola volta,
+          e lo stesso record serve il controllo in tempo reale, l'analitica di
+          lungo periodo e la tracciabilità richiesta dall'<b>Art. 12 del
+          Regolamento sull'IA</b> &mdash; senza la necessità di una pipeline di
+          conformità separata.
         </p>
       </div>
     </div>
@@ -723,13 +715,13 @@
 <!-- ================================================================== -->
 <section class="section" id="patterns">
   <div class="wrap">
-    <div class="sec-eyebrow"><span class="n">02</span>INTEGRATION PATTERNS</div>
-    <h2 class="sec-title">Five ways in. None of them ask you to rewrite anything.</h2>
+    <div class="sec-eyebrow"><span class="n">02</span>PATTERN DI INTEGRAZIONE</div>
+    <h2 class="sec-title">Cinque modi per integrarlo. Nessuno richiede di riscrivere qualcosa.</h2>
     <p class="sec-lede">
-      Pick the shape that matches your team: a grid engineer already inside
-      SCADA, an AI platform team wiring tool calls, an analyst used to
-      <span class="mono">psql</span>, or a compliance officer who just wants
-      the receipt.
+      Scegliete la forma che corrisponde al vostro team: un ingegnere di rete già
+      dentro SCADA, un team di piattaforma IA che collega tool call, un analista
+      abituato a <span class="mono">psql</span>, o un responsabile della conformità
+      che vuole solo la ricevuta.
     </p>
 
     <div class="cards">
@@ -737,61 +729,63 @@
       <!-- CARD 1 — MCP agents -->
       <div class="card">
         <header>
-          <h3>For agent platforms</h3>
+          <h3>Per piattaforme di agenti</h3>
           <span class="who">MCP · CLAUDE · GPT</span>
         </header>
         <p>
-          MobyDB exposes its five primary tools over MCP. Drop the server URL
-          into Claude.ai / Cursor / your orchestrator and your agent gains
-          jurisdiction‑aware spatial memory, instantly.
+          MobyDB espone i suoi cinque tool principali via MCP. Inserite l'URL del
+          server in Claude.ai / Cursor / nel vostro orchestratore e il vostro
+          agente acquisisce una memoria spaziale consapevole della giurisdizione,
+          immediatamente.
         </p>
-<pre><span class="c">// claude.ai connector config</span>
+<pre><span class="c">// configurazione connettore claude.ai</span>
 {
   <span class="k">"type"</span>: <span class="s">"url"</span>,
   <span class="k">"url"</span>:  <span class="s">"https://mobydb-render-engine-production.up.railway.app/mcp"</span>,
   <span class="k">"name"</span>: <span class="s">"mobydb"</span>
 }
 
-<span class="c">// your agent can now call</span>
+<span class="c">// il vostro agente può ora chiamare</span>
 <span class="f">get_cell_state</span>(<span class="s">"871e8052affffff"</span>, epoch<span class="k">=</span><span class="n">2</span>)
 <span class="f">get_provenance</span>(<span class="s">"871e8052affffff"</span>, epoch<span class="k">=</span><span class="n">2</span>,
                 pubkey<span class="k">=</span><span class="s">"..."</span>)</pre>
-        <div class="out">Returns signed state <b>+ Merkle proof</b> — your agent can prove the answer without trusting the server.</div>
+        <div class="out">Restituisce lo stato firmato <b>+ prova Merkle</b> — il vostro agente può dimostrare la risposta senza dover fidarsi del server.</div>
       </div>
 
       <!-- CARD 2 — HTTP / SDK -->
       <div class="card">
         <header>
-          <h3>For application teams</h3>
+          <h3>Per team applicativi</h3>
           <span class="who">HTTP · RUST · PYTHON · TS</span>
         </header>
         <p>
-          A thin HTTP surface. No ORM, no client library required. The Rust,
-          Python, and TypeScript SDKs are sugar — useful, never necessary.
+          Una superficie HTTP leggera. Nessun ORM, nessuna libreria client
+          obbligatoria. Gli SDK Rust, Python e TypeScript sono zucchero sintattico
+          &mdash; utili, mai necessari.
         </p>
-<pre><span class="c"># curl — the reference client</span>
+<pre><span class="c"># curl — il client di riferimento</span>
 $ curl <span class="s">https://.../v1/near/871e8052affffff?rings=2</span> \
        <span class="k">-H</span> <span class="s">"x-api-key: $MOBYDB_KEY"</span>
 
-<span class="c"># Python — identical payload, ergonomic API</span>
+<span class="c"># Python — stesso payload, API ergonomica</span>
 <span class="k">from</span> mobydb <span class="k">import</span> Client
 db <span class="k">=</span> Client(api_key<span class="k">=</span><span class="f">os</span>.environ[<span class="s">"MOBYDB_KEY"</span>])
 <span class="k">for</span> cell <span class="k">in</span> db.<span class="f">near</span>(<span class="s">"871e8052affffff"</span>, rings<span class="k">=</span><span class="n">2</span>):
     <span class="f">print</span>(cell.h3_cell, cell.epoch, cell.signed_by)</pre>
-        <div class="out">Same JSON everywhere. <b>No hidden state.</b> What you see on the wire is what you get in code.</div>
+        <div class="out">Stesso JSON ovunque. <b>Nessuno stato nascosto.</b> Ciò che vedete sul filo è ciò che ottenete nel codice.</div>
       </div>
 
       <!-- CARD 3 — SCADA / historian -->
       <div class="card">
         <header>
-          <h3>For grid operators</h3>
-          <span class="who">SCADA · HISTORIAN · SIDECAR</span>
+          <h3>Per operatori di rete</h3>
+          <span class="who">SCADA · STORICO · SIDECAR</span>
         </header>
         <p>
-          MobyDB ships as a sidecar. Your SCADA keeps ingesting, your
-          historian keeps its retention policy. The sidecar subscribes,
-          signs, and writes a <span class="mono">ct‑audit</span> copy into
-          MobyDB. No changes to the control path.
+          MobyDB si installa come sidecar. Il vostro SCADA continua a ingerire,
+          il vostro storico mantiene la sua politica di retention. Il sidecar
+          si sottoscrive, firma e scrive una copia <span class="mono">ct‑audit</span>
+          su MobyDB. Nessun cambiamento al percorso di controllo.
         </p>
 <pre><span class="c"># scada-adapter.toml</span>
 [source.opcua]
@@ -803,21 +797,22 @@ url <span class="k">=</span> <span class="s">"https://mobydb.internal/v1/write"<
 h3_resolution <span class="k">=</span> <span class="n">9</span>
 signer <span class="k">=</span> <span class="s">"hsm://substation-astalli"</span>
 facet  <span class="k">=</span> <span class="s">"grid@terna"</span></pre>
-        <div class="out">Read path unchanged. Write path gains <b>signed provenance</b> and <b>NIS2‑ready retention</b>.</div>
+        <div class="out">Percorso di lettura invariato. Il percorso di scrittura acquisisce <b>provenienza firmata</b> e <b>retention conforme NIS2</b>.</div>
       </div>
 
       <!-- CARD 4 — GNS-AIP -->
       <div class="card">
         <header>
-          <h3>For AI governance</h3>
-          <span class="who">GNS‑AIP · DELEGATION · AUDIT</span>
+          <h3>Per la governance IA</h3>
+          <span class="who">GNS‑AIP · DELEGA · AUDIT</span>
         </header>
         <p>
-          Every AI agent acting on the data carries a GNS identity scoped to
-          specific H3 cells. Writes outside that territory are rejected at
-          the database, not at application layer. The proof is persistent.
+          Ogni agente IA che opera sui dati porta con sé un'identità GNS
+          delimitata a specifiche celle H3. Le scritture al di fuori di quel
+          territorio sono respinte a livello di database, non a livello
+          applicativo. La prova è persistente.
         </p>
-<pre><span class="c">// delegation certificate (canonical JSON)</span>
+<pre><span class="c">// certificato di delega (JSON canonico)</span>
 {
   <span class="k">"principal"</span>:  <span class="s">"@camilo.ayerbe"</span>,
   <span class="k">"agent"</span>:      <span class="s">"agent://terna-grid-ai"</span>,
@@ -827,57 +822,58 @@ facet  <span class="k">=</span> <span class="s">"grid@terna"</span></pre>
   <span class="k">"constraints"</span>: { <span class="k">"ops"</span>: [<span class="s">"read"</span>, <span class="s">"write"</span>] },
   <span class="k">"principal_signature"</span>: <span class="s">"ed25519:..."</span>
 }</pre>
-        <div class="out">The agent's every write is now traceable to <b>a human signature</b> under a <b>scoped mandate</b>.</div>
+        <div class="out">Ogni scrittura dell'agente è ora tracciabile fino a <b>una firma umana</b> sotto un <b>mandato delimitato</b>.</div>
       </div>
 
       <!-- CARD 5 — Compliance retrieval -->
       <div class="card">
         <header>
-          <h3>For compliance officers</h3>
-          <span class="who">EU AI ACT · NIS2 · GDPR</span>
+          <h3>Per i responsabili della conformità</h3>
+          <span class="who">AI ACT · NIS2 · GDPR</span>
         </header>
         <p>
-          Pull a signed attestation bundle for any cell / epoch / agent tuple.
-          The bundle is self‑verifying: Merkle proof, public key, canonical
-          payload. A regulator can verify offline, without hitting your API.
+          Estraete un bundle di attestazione firmato per qualsiasi tupla
+          cella / epoch / agente. Il bundle è auto‑verificante: prova Merkle,
+          chiave pubblica, payload canonico. Un regolatore può verificarlo
+          offline, senza interrogare le vostre API.
         </p>
-<pre><span class="c"># regulator-friendly bundle</span>
+<pre><span class="c"># bundle per il regolatore</span>
 $ mobydb attest \
     <span class="k">--cell</span>  <span class="s">871e8052affffff</span> \
     <span class="k">--epoch</span> <span class="s">2</span> \
     <span class="k">--agent</span> <span class="s">agent://terna-grid-ai</span> \
     <span class="k">-o</span> attestation_2026_04_22.json
 
-<span class="c"># verifies offline, no server needed</span>
+<span class="c"># si verifica offline, senza server</span>
 $ mobydb verify attestation_2026_04_22.json
-<span class="s">OK</span>  epoch root  <span class="s">dfee521a09…d831</span>
-<span class="s">OK</span>  signature   <span class="s">ed25519 valid</span>
-<span class="s">OK</span>  delegation  <span class="s">chain complete</span></pre>
-        <div class="out">One file, three proofs. <b>This is the audit artefact</b> — in hand, not promised.</div>
+<span class="s">OK</span>  radice epoch  <span class="s">dfee521a09…d831</span>
+<span class="s">OK</span>  firma         <span class="s">ed25519 valida</span>
+<span class="s">OK</span>  delega        <span class="s">catena completa</span></pre>
+        <div class="out">Un file, tre prove. <b>Questo è l'artefatto di audit</b> &mdash; in mano, non promesso.</div>
       </div>
 
       <!-- CARD 6 — Migration from PostGIS -->
       <div class="card">
         <header>
-          <h3>For PostGIS shops</h3>
-          <span class="who">MIGRATION · DUAL‑WRITE</span>
+          <h3>Per chi usa PostGIS</h3>
+          <span class="who">MIGRAZIONE · DUAL‑WRITE</span>
         </header>
         <p>
-          Keep PostGIS for analytical joins and reporting. Add MobyDB as the
-          system‑of‑record for trajectory &amp; telemetry where provenance
-          matters. Dual‑write from your existing pipeline; cut over by use
-          case, not by big‑bang migration.
+          Tenete PostGIS per i join analitici e la reportistica. Aggiungete MobyDB
+          come sistema di registrazione per traiettoria e telemetria dove conta
+          la provenienza. Dual‑write dalla vostra pipeline esistente; passate
+          caso per caso, non con una migrazione big‑bang.
         </p>
-<pre><span class="c">-- existing PostGIS query stays untouched</span>
+<pre><span class="c">-- la query PostGIS esistente resta invariata</span>
 <span class="k">SELECT</span> <span class="f">ST_AsGeoJSON</span>(geom)
 <span class="k">FROM</span> sensor_readings
 <span class="k">WHERE</span> recorded_at <span class="k">&gt;</span> <span class="s">'2026-04-01'</span>;
 
-<span class="c">-- same tuple, addressable &amp; verifiable</span>
+<span class="c">-- stessa tupla, indirizzabile e verificabile</span>
 GET /v1/near/871e8052affffff?rings<span class="k">=</span><span class="n">2</span>
      <span class="k">&amp;</span>since_epoch<span class="k">=</span><span class="n">1</span>
      <span class="k">&amp;</span>until_epoch<span class="k">=</span><span class="n">2</span></pre>
-        <div class="out">Analysts keep their SQL. Auditors get proofs. <b>Nobody has to migrate anything on day one.</b></div>
+        <div class="out">Gli analisti tengono il loro SQL. I revisori ricevono le prove. <b>Nessuno deve migrare nulla al primo giorno.</b></div>
       </div>
 
     </div>
@@ -889,56 +885,56 @@ GET /v1/near/871e8052affffff?rings<span class="k">=</span><span class="n">2</spa
 <!-- ================================================================== -->
 <section class="section" id="compliance">
   <div class="wrap">
-    <div class="sec-eyebrow"><span class="n">03</span>COMPLIANCE PIPELINE</div>
-    <h2 class="sec-title">EU AI Act, end‑to‑end, without a separate pipeline.</h2>
+    <div class="sec-eyebrow"><span class="n">03</span>PIPELINE DI CONFORMITÀ</div>
+    <h2 class="sec-title">Regolamento sull'IA, end‑to‑end, senza pipeline separata.</h2>
     <p class="sec-lede">
-      The August 2 2026 enforcement deadline doesn't need a new compliance
-      stack. Every record MobyDB stores is already the evidence Art. 12
-      (record‑keeping), Art. 26§6 (retention), Art. 50 (transparency), and
-      Art. 72 (post‑market monitoring) ask for.
+      La scadenza di applicazione del 2 agosto 2026 non richiede un nuovo stack
+      di conformità. Ogni record che MobyDB archivia è già l'evidenza che
+      richiedono l'Art. 12 (tenuta dei registri), l'Art. 26§6 (conservazione),
+      l'Art. 50 (trasparenza) e l'Art. 72 (monitoraggio post‑commercializzazione).
     </p>
 
     <div class="pipe">
-      <h3>From sensor reading to regulator attestation</h3>
-      <p class="sub">One write. Five gates. A single verifiable artefact at the end.</p>
+      <h3>Dalla lettura del sensore all'attestazione per il regolatore</h3>
+      <p class="sub">Una scrittura. Cinque gate. Un unico artefatto verificabile alla fine.</p>
 
       <div class="flow">
         <div class="step">
-          <div class="no">01 · Capture</div>
-          <div class="ttl">Agent or sensor writes</div>
-          <div class="d">Payload + H3 cell + Ed25519 signature from a GNS identity.</div>
+          <div class="no">01 · Cattura</div>
+          <div class="ttl">Scrittura di agente o sensore</div>
+          <div class="d">Payload + cella H3 + firma Ed25519 da un'identità GNS.</div>
           <div class="art">Art. 50</div>
         </div>
         <div class="step">
-          <div class="no">02 · Scope</div>
-          <div class="ttl">Jurisdictional check</div>
-          <div class="d">Delegation certificate bounds the agent to specific H3 cells.</div>
+          <div class="no">02 · Ambito</div>
+          <div class="ttl">Controllo giurisdizionale</div>
+          <div class="d">Il certificato di delega vincola l'agente a celle H3 specifiche.</div>
           <div class="art">Art. 25</div>
         </div>
         <div class="step">
-          <div class="no">03 · Seal</div>
-          <div class="ttl">Epoch Merkle root</div>
-          <div class="d">Hourly Blake3 tree; parent_root chains the full history.</div>
+          <div class="no">03 · Sigilla</div>
+          <div class="ttl">Radice Merkle dell'epoch</div>
+          <div class="d">Albero Blake3 orario; parent_root concatena l'intera cronologia.</div>
           <div class="art">Art. 12</div>
         </div>
         <div class="step">
-          <div class="no">04 · Retain</div>
-          <div class="ttl">Immutable retention</div>
-          <div class="d">Record + proof kept per operator‑specified policy window.</div>
+          <div class="no">04 · Conserva</div>
+          <div class="ttl">Retention immutabile</div>
+          <div class="d">Record + prova conservati secondo finestra di policy dell'operatore.</div>
           <div class="art">Art. 26§6</div>
         </div>
         <div class="step">
-          <div class="no">05 · Attest</div>
-          <div class="ttl">Regulator bundle</div>
-          <div class="d">Offline‑verifiable JSON: proof, signature, chain.</div>
+          <div class="no">05 · Attesta</div>
+          <div class="ttl">Bundle per il regolatore</div>
+          <div class="d">JSON verificabile offline: prova, firma, catena.</div>
           <div class="art">Art. 72</div>
         </div>
       </div>
 
       <div class="foot">
-        <div><b>NIS2:</b> sidecar ingest preserves full audit trail without touching the control path.</div>
-        <div><b>GDPR:</b> H3 quantization means personal data can be coarsened before write, not after.</div>
-        <div><b>ISO 27001:</b> every write is cryptographic evidence of who, where, when.</div>
+        <div><b>NIS2:</b> l'ingestione sidecar preserva la pista di audit completa senza toccare il percorso di controllo.</div>
+        <div><b>GDPR:</b> la quantizzazione H3 consente di anonimizzare i dati personali prima della scrittura, non dopo.</div>
+        <div><b>ISO 27001:</b> ogni scrittura è evidenza crittografica di chi, dove e quando.</div>
       </div>
     </div>
   </div>
@@ -949,80 +945,80 @@ GET /v1/near/871e8052affffff?rings<span class="k">=</span><span class="n">2</spa
 <!-- ================================================================== -->
 <section class="section" id="matrix">
   <div class="wrap">
-    <div class="sec-eyebrow"><span class="n">04</span>WHAT EXISTING TOOLING DOES NOT COVER</div>
-    <h2 class="sec-title">The capability matrix, honestly drawn.</h2>
+    <div class="sec-eyebrow"><span class="n">04</span>CIÒ CHE GLI STRUMENTI ESISTENTI NON COPRONO</div>
+    <h2 class="sec-title">La matrice di capacità, tracciata onestamente.</h2>
     <p class="sec-lede">
-      MobyDB is not a PostGIS killer. It covers a different axis — proof and
-      jurisdiction — that mature spatial databases were never designed to
-      carry. Use both.
+      MobyDB non è un sostituto di PostGIS. Copre un asse diverso &mdash; prova
+      e giurisdizione &mdash; che i database spaziali maturi non sono mai stati
+      progettati per gestire. Usateli entrambi.
     </p>
 
-    <table class="tbl" aria-label="Capability matrix">
+    <table class="tbl" aria-label="Matrice di capacità">
       <thead>
         <tr>
-          <th>Capability</th>
+          <th>Capacità</th>
           <th>PostGIS</th>
-          <th>Time‑series DB</th>
+          <th>DB time‑series</th>
           <th>Blockchain L1</th>
           <th>MobyDB</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td>Geospatial joins &amp; analytics</td>
-          <td><span class="y">YES</span></td>
-          <td class="m">limited</td>
+          <td>Join e analisi geospaziali</td>
+          <td><span class="y">SÌ</span></td>
+          <td class="m">limitato</td>
           <td><span class="n">NO</span></td>
-          <td class="m">partial <span class="mono" style="color:var(--ink-dim)">(MobyQL)</span></td>
+          <td class="m">parziale <span class="mono" style="color:var(--ink-dim)">(MobyQL)</span></td>
         </tr>
         <tr>
-          <td>Point‑in‑time telemetry</td>
-          <td class="m">via partitions</td>
-          <td><span class="y">YES</span></td>
+          <td>Telemetria point‑in‑time</td>
+          <td class="m">via partizioni</td>
+          <td><span class="y">SÌ</span></td>
           <td><span class="n">NO</span></td>
-          <td><span class="y">YES</span></td>
+          <td><span class="y">SÌ</span></td>
         </tr>
         <tr>
-          <td>Per‑record signed provenance</td>
+          <td>Provenienza firmata per record</td>
           <td><span class="n">NO</span></td>
           <td><span class="n">NO</span></td>
-          <td><span class="y">YES</span></td>
-          <td><span class="y">YES</span></td>
+          <td><span class="y">SÌ</span></td>
+          <td><span class="y">SÌ</span></td>
         </tr>
         <tr>
-          <td>Jurisdictional scoping</td>
+          <td>Ambito giurisdizionale</td>
           <td><span class="n">NO</span></td>
           <td><span class="n">NO</span></td>
-          <td class="m">indirect</td>
-          <td><span class="y">YES</span></td>
+          <td class="m">indiretto</td>
+          <td><span class="y">SÌ</span></td>
         </tr>
         <tr>
-          <td>Offline‑verifiable audit artefact</td>
+          <td>Artefatto di audit verificabile offline</td>
           <td><span class="n">NO</span></td>
           <td><span class="n">NO</span></td>
-          <td><span class="y">YES</span></td>
-          <td><span class="y">YES</span></td>
+          <td><span class="y">SÌ</span></td>
+          <td><span class="y">SÌ</span></td>
         </tr>
         <tr>
-          <td>Sub‑ms spatial point lookup</td>
+          <td>Lookup puntuale sub‑ms</td>
           <td class="m">~8 ms</td>
-          <td class="m">varies</td>
+          <td class="m">variabile</td>
           <td><span class="n">NO</span></td>
-          <td><span class="y">0.24 ms</span></td>
+          <td><span class="y">0,24 ms</span></td>
         </tr>
         <tr>
-          <td>Runs on commodity infra</td>
-          <td><span class="y">YES</span></td>
-          <td><span class="y">YES</span></td>
-          <td class="m">no (or costly)</td>
-          <td><span class="y">YES</span></td>
+          <td>Funziona su infrastruttura commodity</td>
+          <td><span class="y">SÌ</span></td>
+          <td><span class="y">SÌ</span></td>
+          <td class="m">no (o costoso)</td>
+          <td><span class="y">SÌ</span></td>
         </tr>
         <tr>
-          <td>EU AI Act evidence out‑of‑the‑box</td>
+          <td>Evidenza AI Act out‑of‑the‑box</td>
           <td><span class="n">NO</span></td>
           <td><span class="n">NO</span></td>
-          <td class="m">partial</td>
-          <td><span class="y">YES</span></td>
+          <td class="m">parziale</td>
+          <td><span class="y">SÌ</span></td>
         </tr>
       </tbody>
     </table>
@@ -1034,21 +1030,22 @@ GET /v1/near/871e8052affffff?rings<span class="k">=</span><span class="n">2</spa
 <!-- ================================================================== -->
 <section class="cta-band">
   <div class="wrap">
-    <h2>See it run on your map. Click a cell. Read the proof.</h2>
+    <h2>Guardatelo funzionare sulla vostra mappa. Cliccate una cella. Leggete la prova.</h2>
     <p>
-      The live demo has ~1,000 cells seeded across Italian utility infrastructure.
-      Pan to Rome, click any substation, inspect the audit trail, verify the
-      Merkle proof in your browser. Nothing is hand‑waved.
+      La demo live contiene circa 4.100 celle seminate sull'infrastruttura
+      delle utility italiane. Spostate la mappa su Roma, cliccate qualsiasi
+      sottostazione, ispezionate la pista di audit, verificate la prova Merkle
+      nel browser. Nulla è lasciato al caso.
     </p>
     <div class="btns">
       <a class="btn primary" href="/map.html">
-        Open the live demo <span class="arrow">→</span>
+        Apri la demo live <span class="arrow">→</span>
       </a>
-      <a class="btn" href="mailto:camilo@ulissy.app?subject=MobyDB%20for%20%5Bcompany%5D">
-        Email Camilo <span class="arrow">→</span>
+      <a class="btn" href="mailto:camilo@ulissy.app?subject=MobyDB%20per%20%5Bazienda%5D">
+        Scrivi a Camilo <span class="arrow">→</span>
       </a>
       <a class="btn" href="https://github.com/GNS-Foundation/mobydb-benchmark">
-        Read the benchmark <span class="arrow">→</span>
+        Leggi il benchmark <span class="arrow">→</span>
       </a>
     </div>
   </div>
@@ -1060,7 +1057,7 @@ GET /v1/near/871e8052affffff?rings<span class="k">=</span><span class="n">2</spa
       © 2026 ULISSY s.r.l. · Via Gaetano Sacchi 16, Roma · P.IVA 18315191009
     </div>
     <div>
-      <a href="/index.it.html">Italiano</a> &nbsp;·&nbsp;
+      <a href="/">English</a> &nbsp;·&nbsp;
       <a href="https://mobydb.com">mobydb.com</a> &nbsp;·&nbsp;
       <a href="/map.html">demo</a> &nbsp;·&nbsp;
       <a href="https://docs.geiant.com">docs</a>
