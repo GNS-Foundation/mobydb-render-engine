@@ -549,10 +549,33 @@
     const bus = getBus();
     bus.addEventListener('cells', () => { if (on) paint(true); });
     bus.addEventListener('epoch', () => { if (on) paint(true); });
+    // LEGEND_AUTOHIDE_V1 — hide legend while an audit panel is open,
+    // because both sit in the bottom-right and collide on narrow viewports.
+    // The compliance section inside the audit panel carries the same info,
+    // so hiding the legend doesn't lose anything for the user.
     bus.addEventListener('audit-open', ev => {
       const cell = ev?.detail?.cell;
       if (cell) tryAttachToAuditPanel(cell, currentEpoch());
+      legend.style.opacity = '0';
+      legend.style.pointerEvents = 'none';
     });
+
+    // Re-show the legend when the user clicks on the map background
+    // (i.e. anywhere other than a substation cell). Map clicks not over
+    // a cell don't trigger audit-open, so we treat them as 'done inspecting'.
+    const map2 = getMap();
+    if (map2 && typeof map2.on === 'function') {
+      map2.on('click', e => {
+        // If a cells-fill feature is at this point, the dedicated
+        // handler already fired — do nothing. Otherwise restore the legend
+        // (only if compliance view is on).
+        const feats = map2.queryRenderedFeatures(e.point, { layers: ['cells-fill'] });
+        if ((!feats || feats.length === 0) && on) {
+          legend.style.opacity = '';
+          legend.style.pointerEvents = '';
+        }
+      });
+    }
 
     const map = getMap();
     if (map) {
@@ -573,7 +596,7 @@
     TIER,
     COLOR,
     renderAuditSection,
-    version: '3.1.2-local'
+    version: '3.1.3-local'
   });
 
   if (document.readyState === 'loading') {
