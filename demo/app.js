@@ -332,6 +332,7 @@ async function refreshCells() {
         // At low zoom we only show lines. Clear any existing cells from the
         // previous high-zoom view.
         map.getSource("cells")?.setData({ type: "FeatureCollection", features: [] });
+        __syncCellsToBus([]);
         showHint(`zoom in to ${CONFIG.cell_min_zoom}+ to load signed substation cells · transmission lines shown at all zooms`);
         return;
     }
@@ -378,12 +379,14 @@ async function refreshCells() {
             type: "FeatureCollection",
             features,
         });
+        __syncCellsToBus(inner.cells);
 
         updateCostCounter();
     } catch (e) {
         if (e.name === "AbortError") return;
         console.error("refreshCells failed:", e);
         map.getSource("cells")?.setData({ type: "FeatureCollection", features: [] });
+        __syncCellsToBus([]);
         // If the server rejected the viewport, tell user why in plain language.
         // This is NOT a server error — don't downgrade the status pill.
         if (e.message.includes("viewport exceeds max cells")) {
@@ -428,6 +431,9 @@ async function onCellClick(e) {
             epoch_id: currentEpoch,
         });
         renderAuditPanel(inner);
+        window.mobydbBus?.dispatchEvent(new CustomEvent("audit-open", {
+            detail: { cell: { h3_cell: h3hex, epoch: currentEpoch, ...inner } }
+        }));
     } catch (e) {
         renderAuditError(h3hex, e.message);
     }
@@ -573,6 +579,7 @@ $("epoch-slider").addEventListener("input", e => {
     $("epoch-date").textContent = EPOCH_DATES[currentEpoch] || "";
 });
 $("epoch-slider").addEventListener("change", () => {
+    window.mobydbBus?.dispatchEvent(new CustomEvent("epoch", { detail: { epoch: currentEpoch } }));
     refreshCells();
 });
 $("epoch-num").textContent = currentEpoch;
@@ -678,4 +685,29 @@ function hideHint() {
 
 if (!CONFIG.api_key) {
     console.warn("MOBYDB_DEMO_KEY not set — add to window.MOBYDB_DEMO_KEY before app.js loads");
+}
+
+// -----------------------------------------------------------------------------
+// Session 3 integration surface
+// Expose map, state, and an event bus so drop-in overlay modules
+// (compliance_overlay.js, liveness_indicators.js) can subscribe without
+// importing this ES module.
+// -----------------------------------------------------------------------------
+
+window.mobydbMap     = map;
+window.mobydbBus     = new EventTarget();
+window.mobydbState   = { cells: [], currentEpoch, seenEpochs: new Set([currentEpoch]) };
+window.mobydbDemoKey = CONFIG.api_key || null;
+window.mobydbConfig  = { apiBase: CONFIG.render_url || '', apiKey: CONFIG.api_key || null };
+
+// Session 3: sync cells to shared state + notify subscribers.
+function __syncCellsToBus(cells) {
+    if (window.mobydbState) {
+        window.mobydbState.cells = Array.isArray(cells) ? cells : [];
+        window.mobydbState.currentEpoch = currentEpoch;
+        window.mobydbState.seenEpochs?.add(currentEpoch);
+    }
+    window.mobydbBus?.dispatchEvent(new CustomEvent("cells", {
+        detail: { cells: window.mobydbState?.cells || [] }
+    }));
 }
