@@ -175,9 +175,13 @@
     --${NS}-eu:        ${COLOR.EU};
   }
 
+  /* TOGGLE_BELOW_HEADER - header bar occupies roughly 72px of top-right
+     real estate (brand, status pill, zoom indicator, mode pill). We position
+     the compliance toggle below that so it does not overlap the server-status
+     pill on narrow viewports. */
   .${NS}-toggle {
     position: absolute;
-    top: 16px;
+    top: 88px;
     right: 16px;
     z-index: 50;
     display: flex;
@@ -596,7 +600,7 @@
     TIER,
     COLOR,
     renderAuditSection,
-    version: '3.1.3-local'
+    version: '3.1.4-local'
   });
 
   if (document.readyState === 'loading') {

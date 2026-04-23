@@ -182,7 +182,32 @@ const map = new maplibregl.Map({
     maxZoom: 16,    // Past 16, OSM raster starts looking blurry.
 });
 
+// NAV_CONTROL_OFFSET — zoom control sits at top-left, but the brand
+// badge also lives there. We nudge the MapLibre ctrl wrapper down with
+// CSS so it clears the header. CSS is injected inline to keep this one
+// surgical addition self-contained.
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
+(() => {
+  const s = document.createElement('style');
+  s.textContent = `
+    .maplibregl-ctrl-top-left { top: 96px !important; left: 16px !important; }
+    .maplibregl-ctrl-top-left .maplibregl-ctrl {
+      background: rgba(14, 18, 24, 0.88);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      backdrop-filter: blur(12px) saturate(120%);
+      -webkit-backdrop-filter: blur(12px) saturate(120%);
+      box-shadow: none;
+    }
+    .maplibregl-ctrl-top-left .maplibregl-ctrl button {
+      background-color: transparent;
+      filter: invert(1) brightness(1.2);
+    }
+    .maplibregl-ctrl-top-left .maplibregl-ctrl button:hover {
+      background-color: rgba(148, 163, 184, 0.12);
+    }
+  `;
+  document.head.appendChild(s);
+})();
 map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
 
 map.on("load", () => {
