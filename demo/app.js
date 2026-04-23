@@ -154,15 +154,23 @@ const map = new maplibregl.Map({
     style: {
         version: 8,
         sources: {
-            osm: {
+            // Carto Positron — light, muted basemap optimised for data overlays.
+            // No POI icons (no taxi/church/hospital clutter), street labels
+            // retained for geographic orientation. Free, public CDN.
+            basemap: {
                 type: "raster",
-                tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+                tiles: [
+                    "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
+                    "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
+                    "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
+                    "https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
+                ],
                 tileSize: 256,
-                attribution: "© OpenStreetMap contributors · ODbL",
+                attribution: "© OpenStreetMap contributors · © CARTO",
             },
         },
         layers: [
-            { id: "osm", type: "raster", source: "osm", paint: { "raster-opacity": 0.80 } },
+            { id: "basemap", type: "raster", source: "basemap", paint: { "raster-opacity": 0.95 } },
         ],
         glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
     },
