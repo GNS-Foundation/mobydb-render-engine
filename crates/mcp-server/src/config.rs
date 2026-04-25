@@ -39,6 +39,15 @@ pub struct Config {
     /// Rate limit in requests per minute for the demo key. Applies globally
     /// (single shared bucket) since there is a single demo key.
     pub auth_demo_rate_limit_per_min: u32,
+
+    // Lab integration
+    /// Optional read-only Postgres URL for the GEIANT Lab Supabase. When
+    /// set, the server constructs a `PostgresLabClient` at startup and
+    /// exposes the `query_predictions` MCP tool. When unset, the tool
+    /// returns an `internal` error if invoked. Production is expected
+    /// to set this; dev environments without lab access leave it unset.
+    pub lab_database_url: Option<String>,
+
     pub oauth_enabled: bool,
     pub oauth_issuer: String,
     pub oauth_audience: String,
@@ -102,6 +111,11 @@ impl Config {
             auth_demo_rate_limit_per_min: env_or("AUTH_DEMO_RATE_LIMIT_PER_MIN", "100")
                 .parse()
                 .unwrap_or(100),
+
+            lab_database_url: env::var("LAB_DATABASE_URL")
+                .ok()
+                .filter(|s| !s.is_empty()),
+
             oauth_enabled: bool_env("OAUTH_ENABLED", false),
             oauth_issuer: env_or("OAUTH_ISSUER", ""),
             oauth_audience: env_or("OAUTH_AUDIENCE", ""),

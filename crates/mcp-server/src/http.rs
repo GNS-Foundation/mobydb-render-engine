@@ -49,6 +49,7 @@ use crate::{
     tools::ToolRegistry,
 };
 
+use lab_client::LabClient;
 use render_core::MobyDbClient;
 
 // -----------------------------------------------------------------------------
@@ -71,7 +72,11 @@ pub struct AppState {
 // Entry
 // -----------------------------------------------------------------------------
 
-pub async fn serve(cfg: Config, db: Arc<dyn MobyDbClient>) -> anyhow::Result<()> {
+pub async fn serve(
+    cfg: Config,
+    db: Arc<dyn MobyDbClient>,
+    lab: Option<Arc<dyn LabClient>>,
+) -> anyhow::Result<()> {
     let cfg = Arc::new(cfg);
 
     let metrics_handle = if cfg.metrics_enabled {
@@ -98,7 +103,7 @@ pub async fn serve(cfg: Config, db: Arc<dyn MobyDbClient>) -> anyhow::Result<()>
         cfg: cfg.clone(),
         db: db.clone(),
         auth: AuthState::new(cfg.clone()),
-        tools: Arc::new(ToolRegistry::build(db)),
+        tools: Arc::new(ToolRegistry::build(db, lab)),
         metrics: metrics_handle,
         demo_limiter,
     };

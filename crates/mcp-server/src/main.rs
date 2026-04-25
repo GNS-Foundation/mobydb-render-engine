@@ -70,9 +70,36 @@ async fn main() -> anyhow::Result<()> {
         warn!(error = %e, "database health check failed at startup");
     }
 
-    // 7. Dispatch by transport
+    // 7. Construct the optional lab client (GEIANT Lab Supabase). This
+    //    is None when LAB_DATABASE_URL is unset — the query_predictions
+    //    MCP tool returns an error in that case but the rest of the
+    //    server runs normally.
+    let lab: Option<std::sync::Arc<dyn lab_client::LabClient>> =
+        if let Some(url) = cfg.lab_database_url.clone() {
+            info!("connecting to GEIANT Lab Supabase");
+            let lab_cfg = lab_client::Config {
+                database_url: url,
+                pool_max: 5,
+                connect_timeout: std::time::Duration::from_secs(10),
+            };
+            match lab_client::PostgresLabClient::connect(lab_cfg).await {
+                Ok(client) => {
+                    info!("lab client ready");
+                    Some(std::sync::Arc::new(client) as std::sync::Arc<dyn lab_client::LabClient>)
+                }
+                Err(e) => {
+                    warn!(error = %e, "failed to connect to lab database; query_predictions will be unavailable");
+                    None
+                }
+            }
+        } else {
+            warn!("LAB_DATABASE_URL not set; query_predictions MCP tool will be unavailable");
+            None
+        };
+
+    // 8. Dispatch by transport
     match cfg.mcp_transport.as_str() {
-        "http" => http::serve(cfg, db).await,
+        "http" => http::serve(cfg, db, lab).await,
         "stdio" => {
             anyhow::bail!("stdio transport not yet implemented in v0.1 — use http")
         }

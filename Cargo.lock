@@ -1417,6 +1417,7 @@ dependencies = [
  "futures",
  "hyper",
  "jsonwebtoken",
+ "lab-client",
  "metrics",
  "metrics-exporter-prometheus",
  "mobydb-client",

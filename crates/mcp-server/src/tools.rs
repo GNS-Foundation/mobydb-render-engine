@@ -24,6 +24,8 @@ use render_core::{
     MobyDbClient, TenantId,
 };
 
+use lab_client::LabClient;
+
 use crate::{
     auth::AuthContext,
     error::core_to_jsonrpc,
@@ -43,7 +45,7 @@ struct ToolEntry {
 }
 
 impl ToolRegistry {
-    pub fn build(db: Arc<dyn MobyDbClient>) -> Self {
+    pub fn build(db: Arc<dyn MobyDbClient>, lab: Option<Arc<dyn LabClient>>) -> Self {
         let db_rv = db.clone();
         let db_gc = db.clone();
         let db_qc = db.clone();
@@ -177,6 +179,107 @@ impl ToolRegistry {
                     })
                 }),
             },
+            // ---- query_predictions ----
+            // Reads SignedPredictionRecords from the GEIANT Lab Supabase
+            // via the lab-client crate. The trust root for these records
+            // is GEIANT_LAB_ROOT_PUBKEY — DISTINCT from the render
+            // engine's primary trust root. Returns NOT_FOUND when no
+            // lab client is configured (LAB_DATABASE_URL unset).
+            ToolEntry {
+                def: ToolDefinition {
+                    name: "query_predictions".into(),
+                    description: "Return signed AI prediction records from the GEIANT \
+                         Lab for a given H3 cell. Each record carries an Ed25519 \
+                         signature over canonical JSON plus an embedded 3-level \
+                         delegation chain back to the GEIANT Lab root. Trust \
+                         root is distinct from the render engine's primary root; \
+                         clients displaying both must distinguish them."
+                        .into(),
+                    input_schema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "h3_cell": {
+                                "type": "string",
+                                "description": "H3 cell index, 15-character lowercase hex string"
+                            },
+                            "epoch": {
+                                "type": "integer",
+                                "description": "Optional epoch filter (lab convention: epoch 0 = 2024-01-01 UTC)"
+                            },
+                            "model_version": {
+                                "type": "string",
+                                "description": "Optional model_version filter (e.g. 'sen1floods11@918b9f140bb1')"
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "description": "Max records to return (default 100, max 1000)",
+                                "default": 100
+                            },
+                            "include_chain": {
+                                "type": "boolean",
+                                "description": "Include embedded delegation chain JSONs (default true)",
+                                "default": true
+                            }
+                        },
+                        "required": ["h3_cell"]
+                    }),
+                },
+                run: {
+                    let lab = lab.clone();
+                    Arc::new(move |args, _tenant, _db_arg| {
+                        let lab = lab.clone();
+                        Box::pin(async move {
+                            let lab = lab.ok_or_else(|| {
+                                JsonRpcError::new(
+                                    JsonRpcError::INTERNAL_ERROR,
+                                    "lab client not configured (LAB_DATABASE_URL unset)",
+                                )
+                            })?;
+
+                            let h3_cell = args
+                                .get("h3_cell")
+                                .and_then(|v| v.as_str())
+                                .ok_or_else(|| {
+                                    JsonRpcError::new(
+                                        JsonRpcError::INVALID_PARAMS,
+                                        "h3_cell required",
+                                    )
+                                })?
+                                .to_string();
+                            let epoch = args.get("epoch").and_then(|v| v.as_i64());
+                            let model_version =
+                                args.get("model_version").and_then(|v| v.as_str()).map(String::from);
+                            let limit = args
+                                .get("limit")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(100) as u32;
+                            let include_chain = args
+                                .get("include_chain")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(true);
+
+                            let records = lab
+                                .fetch_signed_predictions(
+                                    &h3_cell,
+                                    epoch,
+                                    model_version.as_deref(),
+                                    limit,
+                                    include_chain,
+                                )
+                                .await
+                                .map_err(|e| lab_err_to_jsonrpc(&e))?;
+
+                            Ok(serde_json::json!({
+                                "records": records,
+                                "trust_root": {
+                                    "root_pubkey": lab_client::GEIANT_LAB_ROOT_PUBKEY,
+                                    "label": "GEIANT Lab",
+                                },
+                            }))
+                        })
+                    })
+                },
+            },
         ];
 
         Self { tools }
@@ -206,4 +309,29 @@ impl ToolRegistry {
             })?;
         (entry.run)(args.clone(), tenant, db).await
     }
+}
+
+// ---------------------------------------------------------------------------
+// Lab client error mapping
+// ---------------------------------------------------------------------------
+
+fn lab_err_to_jsonrpc(e: &lab_client::LabClientError) -> JsonRpcError {
+    use lab_client::LabClientError;
+    let (code, msg) = match e {
+        LabClientError::InvalidH3Cell(_)
+        | LabClientError::InvalidModelVersion(_)
+        | LabClientError::LimitOutOfRange { .. } => {
+            (JsonRpcError::INVALID_PARAMS, e.to_string())
+        }
+        LabClientError::Configuration(_) => {
+            (JsonRpcError::INTERNAL_ERROR, e.to_string())
+        }
+        LabClientError::Database(_)
+        | LabClientError::Decoding(_)
+        | LabClientError::Serde(_)
+        | LabClientError::Other(_) => {
+            (JsonRpcError::INTERNAL_ERROR, e.to_string())
+        }
+    };
+    JsonRpcError::new(code, msg)
 }
