@@ -5,6 +5,7 @@ members = [
     "crates/mobydb-client",
     "crates/mcp-server",
     "crates/seed-data",
+    "crates/lab-client",
 ]
 
 [workspace.package]
