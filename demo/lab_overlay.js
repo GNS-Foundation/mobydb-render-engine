@@ -469,6 +469,22 @@
             labCell,
             recordCount: response.records.length
         }));
+
+        // Notify the tile-preview module (and any other future consumers).
+        // The section is already in the DOM at this point, so the listener
+        // can find it via querySelector and attach a trigger button. The
+        // record is included for convenience.
+        try {
+            const section = host.querySelector('.' + SECTION_CLASS);
+            if (section) {
+                section.dataset.labRecord = JSON.stringify(record);
+                window.mobydbBus.dispatchEvent(new CustomEvent('lab-attestation-rendered', {
+                    detail: { section, record, response, verdict }
+                }));
+            }
+        } catch (e) {
+            console.warn('lab-attestation-rendered dispatch failed:', e);
+        }
     }
 
     // ---------------------------------------------------------------

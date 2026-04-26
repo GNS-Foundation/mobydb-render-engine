@@ -3,12 +3,12 @@
         {
             "delegation_chain_hash": "baf40edcacf5759f03fd8b64f50a57f6bcfcfbd7f991d81f494a74aa2877499f",
             "epoch": 774,
-            "h3_cell": "881e800001fffff",
+            "h3_cell": "881e805015fffff",
             "input": {
-                "acquisition_timestamp": "2026-02-13T10:09:09.832000+00:00",
-                "cloud_cover_percent": 1.9998,
-                "input_tile_hash": "419949d02dc5563aca7c4c7a242ba4fa9cfffecdb3c10f082cffbf1231f76901",
-                "stac_item_id": "S2C_33TUG_20260213_0_L2A"
+                "acquisition_timestamp": "2026-02-13T10:09:13.757000+00:00",
+                "cloud_cover_percent": 0.2253,
+                "input_tile_hash": "eaf9eea5387d1fb132d4d967514fc1a9f6f948f6b39851b5678147f3e5bdb63a",
+                "stac_item_id": "S2C_33TTG_20260213_0_L2A"
             },
             "lab_cert_json": "{\"constraints\": {\"cuda_major\": \"12\", \"gpu_class\": \"A40\", \"repo_commit\": \"7c8cb03e27fc\", \"torch_major\": \"2\"}, \"issued_at\": \"2026-04-24T16:45:12.691964+00:00\", \"issued_by_public_key\": \"h9TRb07XyhDu06h40PSEwcIOn-Z_Md_3GfShCm67vUs\", \"not_after\": \"2026-05-24T16:45:12.691911+00:00\", \"not_before\": \"2026-04-24T16:45:12.691911+00:00\", \"parent_signature\": \"NjBEqAXIMxUl3qMLIGAQtOKPg6q3dhKgS4mcUA2p3lrZDHp2iM5yGusH9M2nXZN6eyGVGEztL_EoiCW4ap6uDQ\", \"subject_public_key\": \"NAK2EA_cuwFleFmT2A0H-7gZN15fr3ZN1JrR10iHKPw\", \"subject_role\": \"geiant-lab-env\", \"version\": 1}",
             "model": {
@@ -20,9 +20,13 @@
             "model_version": "sen1floods11@918b9f140bb1",
             "output": {
                 "argmax_output_sha256": "093b7f69108a820e0183261ebc85c6ac4a340a75950125bc179886fee95fea3a",
-                "binary_output_sha256": "6110f7963c39b88e6df544b33130057becabb298317f45a89edf56114a1b1e35",
-                "output_shape": [1, 196, 1536],
-                "raw_output_sha256": "5cda578d465ba8b1acd5ebfbbf0ecd0d975c3bec6dcb869cd1e5f15b3524e5d0"
+                "binary_output_sha256": "8e46c0f565e29267124d1cd30a3c7eaa74f2b412280487fda4179ece2efba86d",
+                "output_shape": [
+                    1,
+                    196,
+                    1536
+                ],
+                "raw_output_sha256": "8a45fe5303fcfa4db5c9ae58949a43bd782e6b15cd42fccf0de13a0a932c2cb2"
             },
             "record_version": 1,
             "root_cert_json": "{\"constraints\": {}, \"issued_at\": \"2026-04-24T16:45:12.656320+00:00\", \"issued_by_public_key\": \"h9TRb07XyhDu06h40PSEwcIOn-Z_Md_3GfShCm67vUs\", \"not_after\": \"2027-04-24T16:45:12.655376+00:00\", \"not_before\": \"2026-04-24T16:45:12.655376+00:00\", \"parent_signature\": \"fJX9i6tLb2xZbTWZKL_WMTJZyjXxmohEQVBbg5_053GLadJGv3d4exGu0yjSxdTC2kTOHmUoesUOcd6YLTKiDA\", \"subject_public_key\": \"h9TRb07XyhDu06h40PSEwcIOn-Z_Md_3GfShCm67vUs\", \"subject_role\": \"gns-foundation-root\", \"version\": 1}",
@@ -32,9 +36,9 @@
                 "gpu_name": "NVIDIA A40",
                 "torch_version": "2.1.0+cu118"
             },
-            "runtime_cert_json": "{\"constraints\": {\"model_version\": \"sen1floods11@918b9f140bb1\"}, \"issued_at\": \"2026-04-25T08:54:23.454670+00:00\", \"issued_by_public_key\": \"NAK2EA_cuwFleFmT2A0H-7gZN15fr3ZN1JrR10iHKPw\", \"not_after\": \"2026-04-26T08:54:23.454179+00:00\", \"not_before\": \"2026-04-25T08:54:23.454179+00:00\", \"parent_signature\": \"IOBkfNFl0phDVyj6yLN381tFxh708XvlS4XC3ueTSALV9itTG1qwI3ZEk5RGazMU7Y-D24MQsJsZWVioaLT5DA\", \"subject_public_key\": \"voOKfWHUsYGPlMBMJHoK1rEJxuS_VfjgJAfPjCaQoFY\", \"subject_role\": \"prithvi-runtime\", \"version\": 1}",
-            "signature_bytes": "Q5baTXQ4fJxTfJu0prQ9eb7hWxmLd3RFXe9Xz-WCfyFzsa6v55h5VADo9p2_MlwmwUSdT57v_Z75-cHhYpiVCA",
-            "signed_at": "2026-04-25T10:09:35.134898+00:00",
+            "runtime_cert_json": "{\"constraints\": {\"model_version\": \"sen1floods11@918b9f140bb1\"}, \"issued_at\": \"2026-04-26T15:46:41.861887+00:00\", \"issued_by_public_key\": \"NAK2EA_cuwFleFmT2A0H-7gZN15fr3ZN1JrR10iHKPw\", \"not_after\": \"2026-05-11T15:46:41.861508+00:00\", \"not_before\": \"2026-04-26T15:46:41.861508+00:00\", \"parent_signature\": \"lmwV0yRL3GsvI1v7ASCNNlTdrZejCSjU54GsTZR_Ovj7VzENXdYTXHeCvFr5yc27ODLuZlUCrZqBjTYrcJspCQ\", \"subject_public_key\": \"voOKfWHUsYGPlMBMJHoK1rEJxuS_VfjgJAfPjCaQoFY\", \"subject_role\": \"prithvi-runtime\", \"version\": 1}",
+            "signature_bytes": "QzL7L_lML3uRA2WcJu-g2u0_ZWs-T6gFdBzXsNcL30JQMkCnhCRxoXqqann2udNeZ76GH1vv6-EHJx-G0UUYDg",
+            "signed_at": "2026-04-25T10:26:14.210156+00:00",
             "signer_public_key": "voOKfWHUsYGPlMBMJHoK1rEJxuS_VfjgJAfPjCaQoFY"
         }
     ],
