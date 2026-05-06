@@ -525,6 +525,25 @@
     .${NS}-detail-section {
         margin-bottom: 18px;
     }
+    .${NS}-detail-section .field {
+        display: grid;
+        grid-template-columns: 110px 1fr;
+        gap: 12px;
+        padding: 6px 0;
+        align-items: start;
+    }
+    .${NS}-detail-section .field-label {
+        font: 600 9px/1.5 "Space Mono", monospace;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--${NS}-muted);
+        padding-top: 2px;
+    }
+    .${NS}-detail-section .field-value {
+        font: 400 11px/1.4 "JetBrains Mono", "Space Mono", monospace;
+        color: var(--${NS}-text);
+        word-break: break-all;
+    }
     .${NS}-detail-section-title {
         font: 600 10px/1 "Space Mono", monospace;
         letter-spacing: 0.06em;
@@ -1017,7 +1036,7 @@
             // If lab_verify.js exposes a primitive, use it; otherwise dynamic import.
             const ok = await runEd25519Verify(device);
             btn.dataset.state = ok ? 'ok' : 'bad';
-            btn.textContent = ok ? '✓ Signature valid · offline verified' : '✗ Signature INVALID';
+            btn.textContent = ok ? (device.provisioning_mode === 'A' ? '✓ Native signature valid · offline verified' : '✓ Trust chain validated · mode ' + device.provisioning_mode) : '✗ Signature INVALID';
         } catch (err) {
             console.error('[cuneo] verify failed', err);
             btn.dataset.state = 'bad';
