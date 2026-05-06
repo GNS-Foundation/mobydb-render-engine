@@ -85,8 +85,8 @@
     /* Toggle button (top-right, below twin toggle which is at top: 124px) -- */
     .${NS}-toggle {
         position: fixed !important;
-        top: 264px;
-        right: 16px;
+        top: 124px;
+        left: 16px;
         z-index: 50;
         background: var(--${NS}-bg);
         color: var(--${NS}-text);
@@ -137,8 +137,8 @@
     /* LOCATE button (appears when overlay active, just below toggle) ----- */
     .${NS}-locate {
         position: fixed !important;
-        top: 308px;
-        right: 16px;
+        top: 168px;
+        left: 16px;
         z-index: 50;
         background: var(--${NS}-bg);
         color: var(--${NS}-amber);
