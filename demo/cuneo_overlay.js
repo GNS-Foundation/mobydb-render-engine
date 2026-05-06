@@ -82,10 +82,10 @@
         --${NS}-amber-bg-2:rgba(245, 158, 11, 0.04);
     }
 
-    /* Toggle button (top-right, below twin toggle which is at top: 124px) -- */
+    /* Toggle button (top-left, below MapLibre zoom controls) -- */
     .${NS}-toggle {
         position: fixed !important;
-        top: 124px;
+        top: 200px;
         left: 16px;
         z-index: 50;
         background: var(--${NS}-bg);
@@ -137,7 +137,7 @@
     /* LOCATE button (appears when overlay active, just below toggle) ----- */
     .${NS}-locate {
         position: fixed !important;
-        top: 168px;
+        top: 244px;
         left: 16px;
         z-index: 50;
         background: var(--${NS}-bg);
@@ -464,6 +464,75 @@
         border-left: 2px solid var(--${NS}-vi);
         color: var(--${NS}-vi);
         font: 400 11px/1.4 "DM Sans", system-ui, sans-serif;
+    }
+
+    /* Device detail view (replaces device list inside modal) ----------- */
+    .${NS}-back-btn {
+        background: transparent;
+        color: var(--${NS}-amber);
+        border: 1px solid var(--${NS}-amber);
+        border-radius: 3px;
+        padding: 4px 10px;
+        font: 400 10px/1 "Space Mono", monospace;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: background 0.14s ease;
+    }
+    .${NS}-back-btn:hover {
+        background: var(--${NS}-amber-bg);
+    }
+
+    .${NS}-device-detail-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 18px 22px;
+    }
+
+    .${NS}-detail-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+    .${NS}-detail-cell {
+        padding: 10px 12px;
+        background: var(--${NS}-amber-bg-2);
+        border-radius: 3px;
+        border-left: 2px solid var(--${NS}-amber);
+    }
+    .${NS}-detail-cell .label {
+        font: 600 9px/1 "Space Mono", monospace;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--${NS}-muted);
+        margin-bottom: 4px;
+    }
+    .${NS}-detail-cell .value {
+        font: 400 14px/1.2 "DM Sans", system-ui, sans-serif;
+        color: var(--${NS}-text);
+        margin-bottom: 4px;
+    }
+    .${NS}-detail-cell .value.mono {
+        font-family: "JetBrains Mono", "Space Mono", monospace;
+        font-size: 12px;
+    }
+    .${NS}-detail-cell .sub {
+        font: 300 11px/1.4 "DM Sans", system-ui, sans-serif;
+        color: var(--${NS}-muted);
+    }
+
+    .${NS}-detail-section {
+        margin-bottom: 18px;
+    }
+    .${NS}-detail-section-title {
+        font: 600 10px/1 "Space Mono", monospace;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--${NS}-amber);
+        margin-bottom: 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--${NS}-border);
     }
     `;
 
@@ -813,36 +882,22 @@
     }
 
     // ---------------------------------------------------------------
-    // Audit panel section (right-side panel)
-    // Renders the device's SOU device.identity.v1, parent chain, and
-    // an offline verification button.
+    // Device audit — renders INSIDE the existing station modal
+    // (replaces the device list view; "← Back" returns to it)
     // ---------------------------------------------------------------
     async function openDeviceAudit(deviceId, station) {
-        closeStationModal();
+        // Don't close the modal — swap its content
+        if (!modalEl) return;
 
         const detail = await loadDeviceDetail(deviceId);
         if (!detail) return;
 
         state.currentDevice = detail;
-        renderAuditSection(detail, station);
-
-        // Open the audit aside if it's not already (mimics the existing pattern)
-        const aside = document.getElementById('audit');
-        if (aside) {
-            aside.classList.remove('audit-empty');
-            const emptyMsg = aside.querySelector('.audit-empty-msg');
-            if (emptyMsg) emptyMsg.style.display = 'none';
-        }
+        renderDeviceDetailInModal(detail, station);
     }
 
-    function renderAuditSection(d, station) {
-        clearAuditSection();
-        const aside = document.getElementById('audit');
-        if (!aside) return;
-
-        const section = document.createElement('div');
-        section.className = `${NS}-audit-section`;
-        section.id = `${NS}-audit`;
+    function renderDeviceDetailInModal(d, station) {
+        if (!modalEl) return;
 
         const sou = d.sou_identity || {};
         const chain = (d.parent_chain || []).map(c =>
@@ -850,60 +905,104 @@
             `:${escapeHtml((c.split(':')[1] || '') + ':' + (c.split(':')[2] || '').slice(0, 16))}…`
         ).join('<span class="arrow">→</span>');
 
-        section.innerHTML = `
-            <h5>Pilot Cuneo · device audit</h5>
-            <div class="field">
-                <div class="field-label">Stazione</div>
-                <div class="field-value">${escapeHtml(station.name)} · ${escapeHtml((station.voltage_levels || ['']).join(' / '))}</div>
-            </div>
-            <div class="field">
-                <div class="field-label">Asset tag</div>
-                <div class="field-value">${escapeHtml(d.asset_tag)}</div>
-            </div>
-            <div class="field">
-                <div class="field-label">Hardware</div>
-                <div class="field-value">${escapeHtml(d.vendor)} ${escapeHtml(d.model)} · fw ${escapeHtml(d.firmware || 'n/a')}</div>
-            </div>
-            <div class="field">
-                <div class="field-label">Role</div>
-                <div class="field-value">${escapeHtml(d.role || '—')}</div>
-            </div>
-            <div class="field">
-                <div class="field-label">Mode</div>
-                <div class="field-value">
-                    <span class="${NS}-mode-badge" data-mode="${escapeHtml(d.provisioning_mode)}">${escapeHtml(d.provisioning_mode)}</span>
-                    ${d.provisioning_mode === 'A' ? 'Native (TPM device)' :
-                      d.provisioning_mode === 'B' ? 'Delegated (sidecar HSM)' :
-                      'Co-signed'}
+        const modalContent = modalEl.querySelector(`.${NS}-modal`);
+        if (!modalContent) return;
+
+        modalContent.innerHTML = `
+            <header>
+                <div>
+                    <button class="${NS}-back-btn" data-back="1">← Back to ${escapeHtml(station.name)}</button>
+                    <h2 style="margin-top: 8px;">${escapeHtml(d.asset_tag)}</h2>
+                    <div class="${NS}-meta">
+                        ${escapeHtml(d.vendor)} ${escapeHtml(d.model)}
+                        · fw ${escapeHtml(d.firmware || 'n/a')}
+                        · role ${escapeHtml(d.role || '—')}
+                    </div>
                 </div>
-            </div>
-            <div class="field">
-                <div class="field-label">H3 res-15</div>
-                <div class="field-value">${escapeHtml(d.h3_res15 || '')}</div>
-            </div>
-            <div class="field">
-                <div class="field-label">Pubkey</div>
-                <div class="field-value">ed25519:${escapeHtml((d.pubkey || '').slice(0, 16))}…${escapeHtml((d.pubkey || '').slice(-8))}</div>
-            </div>
+                <button class="${NS}-close" data-close="1" aria-label="Close">×</button>
+            </header>
 
-            <div style="margin-top: 12px;">
-                <div class="field-label" style="margin-bottom: 4px;">Trust chain</div>
-                <div class="${NS}-chain">${chain}</div>
-            </div>
+            <div class="${NS}-device-detail-body">
+                <div class="${NS}-detail-grid">
+                    <div class="${NS}-detail-cell">
+                        <div class="label">Stazione</div>
+                        <div class="value">${escapeHtml(station.name)}</div>
+                        <div class="sub">${escapeHtml((station.voltage_levels || ['']).join(' / '))}</div>
+                    </div>
+                    <div class="${NS}-detail-cell">
+                        <div class="label">Provisioning mode</div>
+                        <div class="value">
+                            <span class="${NS}-mode-badge" data-mode="${escapeHtml(d.provisioning_mode)}">${escapeHtml(d.provisioning_mode)}</span>
+                        </div>
+                        <div class="sub">${
+                            d.provisioning_mode === 'A' ? 'Native — device firma con TPM proprio' :
+                            d.provisioning_mode === 'B' ? 'Delegated — sidecar firma per delega' :
+                            'Co-signed — device + sidecar firmano insieme'
+                        }</div>
+                    </div>
+                    <div class="${NS}-detail-cell">
+                        <div class="label">Status</div>
+                        <div class="value" style="color: var(--${NS}-ok);">${escapeHtml(d.status || 'AUDIT-READY')}</div>
+                        <div class="sub">Identity verified at provisioning</div>
+                    </div>
+                    <div class="${NS}-detail-cell">
+                        <div class="label">Hardware serial</div>
+                        <div class="value mono">${escapeHtml(d.serial || '—')}</div>
+                        <div class="sub">${escapeHtml(d.category || '')}</div>
+                    </div>
+                </div>
 
-            <button class="${NS}-verify-btn" data-state="idle" id="${NS}-verify">
-                Verify offline ↗
-            </button>
+                <div class="${NS}-detail-section">
+                    <div class="${NS}-detail-section-title">Identity</div>
+                    <div class="field">
+                        <div class="field-label">Pubkey</div>
+                        <div class="field-value">ed25519:${escapeHtml(d.pubkey || '')}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">H3 res-15</div>
+                        <div class="field-value">${escapeHtml(d.h3_res15 || '')}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Content hash</div>
+                        <div class="field-value">${escapeHtml(d.content_hash || '')}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Signature</div>
+                        <div class="field-value">${escapeHtml((d.sou_signature || '').slice(0, 80))}…</div>
+                    </div>
+                </div>
+
+                <div class="${NS}-detail-section">
+                    <div class="${NS}-detail-section-title">Trust chain</div>
+                    <div class="${NS}-chain">${chain}</div>
+                </div>
+
+                <button class="${NS}-verify-btn" data-state="idle" id="${NS}-verify">
+                    Verify offline ↗
+                </button>
+            </div>
         `;
 
-        aside.appendChild(section);
+        // Wire back button
+        modalEl.querySelector(`[data-back]`).addEventListener('click', () => {
+            // Reopen the station modal (re-fetches but cached)
+            const stationData = state.stations.find(s => s.id === station.id) || station;
+            openStationModal(stationData);
+        });
 
-        // Wire verify button
-        const verifyBtn = section.querySelector(`#${NS}-verify`);
-        verifyBtn.addEventListener('click', () => verifyDevice(d, verifyBtn));
+        // Wire close
+        modalEl.querySelectorAll('[data-close]').forEach(b =>
+            b.addEventListener('click', closeStationModal));
+
+        // Wire verify
+        const verifyBtn = modalEl.querySelector(`#${NS}-verify`);
+        if (verifyBtn) {
+            verifyBtn.addEventListener('click', () => verifyDevice(d, verifyBtn));
+        }
     }
 
     function clearAuditSection() {
+        // Compatibility shim — old aside-based audit no longer used
         const old = document.getElementById(`${NS}-audit`);
         if (old) old.remove();
     }
